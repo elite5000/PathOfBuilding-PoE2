@@ -47,5 +47,5 @@ runtime/imgui.ini
 src/poe_api_response.json
 
 #temp files
-docs\New Feature - Meta Skills\*
-.claude\*
+docs/New Feature - Meta Skills/*
+.claude/*
