@@ -2323,6 +2323,16 @@ return {
 	mod("MetaEnergyPerEvent", "BASE", nil),
 	div = 100,
 },
+-- Stage 5 metas (Thundergod's Wrath, Fire Spell on Melee Hit): each only ever has one of these on its
+-- own stat set (unlike Elemental Ailment's three), so sharing "MetaEnergyPerEvent" is safe here.
+["cast_lightning_spell_on_hit_gain_X_centienergy_per_monster_power_on_hit"] = {
+	mod("MetaEnergyPerEvent", "BASE", nil),
+	div = 100,
+},
+["cast_fire_spell_on_hit_gain_X_centienergy_per_monster_power_on_hit"] = {
+	mod("MetaEnergyPerEvent", "BASE", nil),
+	div = 100,
+},
 ["cast_on_using_charm_gain_X_centienergy_per_charm_charge_used_on_using_charm"] = {
 	mod("MetaEnergyPerEvent", "BASE", nil),
 	div = 100,
@@ -2331,6 +2341,11 @@ return {
 -- not a centienergy multiplier like the others, so it gets its own mod name.
 ["cast_on_minion_death_gain_1_energy_per_X_minion_relative_defensiveness_%"] = {
 	mod("MetaEnergyPerEventMinionDefensivenessDivisor", "BASE", nil),
+},
+-- Barrier Invocation (Stage 6): "1 Energy per X Energy Shield damage taken when hit" - same divisor
+-- shape as Minion Death above, not a centienergy multiplier.
+["barrier_invocation_gain_1_energy_per_X_energy_shield_damage_taken_when_hit"] = {
+	mod("MetaEnergyPerESDamageTakenDivisor", "BASE", nil),
 },
 -- On the hidden SupportMetaCastOn*Player support's own stat set, contributed to each socketed spell
 ["generic_ongoing_trigger_1_maximum_energy_per_Xms_total_cast_time"] = {

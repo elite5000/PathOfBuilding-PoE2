@@ -131,4 +131,85 @@ describe("TestTriggers", function()
 
 		assert.is_true((build.calcsTab.mainOutput.MetaEnergyEventsToTrigger or 0) > 0)
 	end)
+
+	it("derives Curse on Block's trigger rate from the manual block-rate config input", function()
+		build.skillsTab:PasteSocketGroup("Despair 20/0  1\nCurse on Block 1/0  1")
+		build.mainSocketGroup = 1
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Despair", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.is_nil(build.calcsTab.mainOutput.MetaEnergyEventsToTrigger)
+
+		build.configTab.input.metaCurseOnBlockEventsPerSecond = 5
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.is_true((build.calcsTab.mainOutput.MetaEnergyEventsToTrigger or 0) > 0)
+		assert.is_true((build.calcsTab.mainOutput.MetaEnergyTriggerRate or 0) > 0)
+	end)
+
+	it("auto-derives Thundergod's Wrath's events/sec from a self-cast melee attack in the group", function()
+		equipQuarterstaff()
+		build.skillsTab:PasteSocketGroup("Elemental Weakness 20/0  1\nThundergod's Wrath 1/0  1\nQuarterstaff Strike 20/0  1")
+		build.mainSocketGroup = 1
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Elemental Weakness", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.is_true((build.calcsTab.mainOutput.MetaEnergyEventsPerSecond or 0) > 0)
+		assert.is_true((build.calcsTab.mainOutput.MetaEnergyTriggerRate or 0) > 0)
+	end)
+
+	it("still lets the manual override win over Thundergod's Wrath's auto-derivation", function()
+		equipQuarterstaff()
+		build.skillsTab:PasteSocketGroup("Elemental Weakness 20/0  1\nThundergod's Wrath 1/0  1\nQuarterstaff Strike 20/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaTGWEventsPerSecond = 2
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals(2, build.calcsTab.mainOutput.MetaEnergyEventsPerSecond)
+	end)
+
+	it("shows Barrier Invocation's fixed Maximum Energy even before its generation rate is set", function()
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nBarrier Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		-- Fixed pool (500), not summed from sockets like every other Meta gem.
+		assert.are.equals("Comet", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.near(500, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
+		assert.is_nil(build.calcsTab.mainOutput.MetaEnergyTriggerRate)
+	end)
+
+	it("caps Barrier Invocation's discharge rate by Energy generation when generation is the bottleneck", function()
+		-- Comet alone costs 300 Energy per discharge. At 1000 ES damage taken/sec (/10 divisor = 100
+		-- Energy/sec), the Energy-limited rate (100/300 = 0.333/sec) is below the 0.2s-cooldown cap (5/sec).
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nBarrier Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaBarrierInvocationESDamageTakenPerSecond = 1000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(100 / 300, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(100 / 300, build.calcsTab.mainOutput.Speed, 0.0001)
+	end)
+
+	it("caps Barrier Invocation's discharge rate by its own cooldown when generation is abundant", function()
+		-- At 100000 ES damage taken/sec (/10 = 10000 Energy/sec), the Energy-limited rate (10000/300 =
+		-- 33.3/sec) exceeds the 0.2s-cooldown cap, so the cooldown (5/sec) is the binding constraint.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nBarrier Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaBarrierInvocationESDamageTakenPerSecond = 100000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
 end)

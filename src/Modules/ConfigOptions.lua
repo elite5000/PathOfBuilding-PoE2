@@ -356,6 +356,21 @@ local configSettings = {
 	{ label = "Cast on Minion Death:", ifSkill = "Cast on Minion Death" },
 	{ var = "metaMinionDeathEventsPerSecond", type = "float", label = "Persistent Minion deaths/sec:", ifSkill = "Cast on Minion Death", tooltip = "The rate at which your Persistent Minions die, used to calculate the Energy generation rate." },
 	{ var = "metaMinionDeathEnergyPerEvent", type = "float", label = "Energy per death:", ifSkill = "Cast on Minion Death", tooltip = "Cast on Minion Death's Energy value depends on minion relative defensiveness, which isn't yet derived automatically, so this must be set manually. See the gem's Energy values on poe2db." },
+	-- Stage 5: same Meta gem Energy engine as above, granted by unique items / the passive tree instead
+	-- of a standalone "Cast on X" gem.
+	{ label = "Curse on Block:", ifSkill = "Curse on Block" },
+	{ var = "metaCurseOnBlockEventsPerSecond", type = "float", label = "Blocks/sec by socketed curses' group:", ifSkill = "Curse on Block", tooltip = "The rate at which you block hits while this Meta skill is active, used to calculate the Energy generation rate." },
+	{ var = "metaCurseOnBlockEnergyPerEvent", type = "float", label = "Energy per block (override):", ifSkill = "Curse on Block", tooltip = "Optional override for the Energy gained per block. Leave blank to use Curse on Block's own value." },
+	{ label = "Fire Spell on Melee Hit:", ifSkill = "Fire Spell on Melee Hit" },
+	{ var = "metaFSOMHEventsPerSecond", type = "float", label = "Melee hits/sec (override):", ifSkill = "Fire Spell on Melee Hit", tooltip = "Optional override for the melee-hit rate used to calculate the Energy generation rate.\nLeave blank to auto-derive from a self-cast melee Attack/Damage skill in the same group (hit rate x hit chance). Set this manually if the derived rate looks wrong." },
+	{ var = "metaFSOMHEnergyPerEvent", type = "float", label = "Energy per hit (override):", ifSkill = "Fire Spell on Melee Hit", tooltip = "Optional override for the Energy gained per melee hit. Leave blank to use Fire Spell on Melee Hit's own value (per monster Power)." },
+	{ label = "Thundergod's Wrath:", ifSkill = "Thundergod's Wrath" },
+	{ var = "metaTGWEventsPerSecond", type = "float", label = "Melee hits/sec (override):", ifSkill = "Thundergod's Wrath", tooltip = "Optional override for the melee-hit rate used to calculate the Energy generation rate.\nLeave blank to auto-derive from a self-cast melee Attack/Damage skill in the same group (hit rate x hit chance). Set this manually if the derived rate looks wrong." },
+	{ var = "metaTGWEnergyPerEvent", type = "float", label = "Energy per hit (override):", ifSkill = "Thundergod's Wrath", tooltip = "Optional override for the Energy gained per melee hit. Leave blank to use Thundergod's Wrath's own value (per monster Power)." },
+	-- Stage 6 proof of concept: Barrier Invocation doesn't auto-fire at maximum Energy - it's manually
+	-- discharged, reported as a steady-state rate capped by its own cooldown or Energy generation.
+	{ label = "Barrier Invocation:", ifSkill = "Barrier Invocation" },
+	{ var = "metaBarrierInvocationESDamageTakenPerSecond", type = "float", label = "Energy Shield damage taken/sec:", ifSkill = "Barrier Invocation", tooltip = "The rate at which your Energy Shield is damaged by enemy hits, used to calculate the Energy generation rate. PoB doesn't yet estimate incoming damage automatically, so this must be set manually." },
 	{ label = "Cruelty:", ifSkill = "Cruelty" },
 	{ var = "overrideCruelty", type = "count", label = "Damage % (if not maximum):", ifSkill = "Cruelty", tooltip = "Cruelty is a buff provided by Cruelty Support which grants\nup to 40% more damage over time to the skills it supports.", apply = function(val, modList, enemyModList)
 		modList:NewMod("Cruelty", "OVERRIDE", m_min(val, 40), "Config", { type = "Condition", var = "Combat" })
