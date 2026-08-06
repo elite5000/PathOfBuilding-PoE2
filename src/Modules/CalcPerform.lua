@@ -3432,6 +3432,12 @@ function calcs.perform(env, skipEHP)
 
 	-- TURNING OFF CALC TRIGGERS AND MIRAGES FOR TIME BEING
 	--calcs.triggers(env, env.player)
+	-- Narrow exception: Meta gems (Cast on X) need calcs.triggers to compute their Energy-based
+	-- trigger rate; see calcs.isMetaEnergyTriggerSkill in CalcTriggers.lua for why this is scoped
+	-- this tightly instead of just uncommenting the line above.
+	if calcs.isMetaEnergyTriggerSkill(env.player) then
+		calcs.triggers(env, env.player)
+	end
 	--if not calcs.mirages(env) then
 		calcs.offence(env, env.player, env.player.mainSkill)
 	--end

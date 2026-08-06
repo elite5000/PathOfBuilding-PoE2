@@ -233,6 +233,8 @@ local modNameList = {
 	["reservation efficiency of skills"] = "ReservationEfficiency",
 	["mana reservation efficiency"] = "ManaReservationEfficiency",
 	["life reservation efficiency"] = "LifeReservationEfficiency",
+	-- Meta gem (Cast on X) Energy mechanic, e.g. "Meta Skills gain 15% increased Energy"
+	["energy"] = "MetaEnergyGeneration",
 	-- Primary defences
 	["maximum energy shield"] = "EnergyShield",
 	["energy shield recharge rate"] = "EnergyShieldRecharge",
@@ -1327,7 +1329,7 @@ local preFlagList = {
 	["^aura skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.Aura } },
 	["^prismatic skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.RandomElement } },
 	["^retaliation skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.Retaliation } },
-	["^meta skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.Meta } },
+	["^meta skills [hdg][ae][vai][eln] "] = { tag = { type = "SkillType", skillType = SkillType.Meta } },
 	["^invocated skills [hd][ae][va][el] "] = { tag = { type = "Condition", var = "InvocationSkill" } },
 	["^invocated spells [hd][ae][va][el] "] = { keywordFlags = KeywordFlag.Spell, tag = { type = "Condition", var = "InvocationSkill" } },
 	["^slam skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.Slam } },

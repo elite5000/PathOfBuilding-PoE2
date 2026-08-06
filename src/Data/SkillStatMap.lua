@@ -2271,6 +2271,77 @@ return {
 	mod("TotalCastTime", "BASE", nil),
 	div = 1000,
 },
+--
+-- Meta gem (Cast on X) Energy mechanic
+--
+-- On the meta skill's own stat set (e.g. "Cast on Critical")
+["energy_generated_+%"] = {
+	mod("MetaEnergyGeneration", "INC", nil),
+},
+["generic_ongoing_trigger_maximum_energy_is_total_of_socketed_skills"] = {
+	flag("MetaEnergySumSocketedSkills"),
+},
+["generic_ongoing_trigger_maximum_energy"] = {
+	mod("MetaEnergyMax", "BASE", nil),
+},
+-- Per-event Energy gain, one stat per meta gem (value is in "centienergy", i.e. Energy / 100)
+["cast_on_crit_gain_X_centienergy_per_monster_power_on_crit"] = {
+	mod("MetaEnergyPerEvent", "BASE", nil),
+	div = 100,
+},
+["cast_on_dodge_roll_gain_X_centienergy_per_unit_travelled_while_dodge_rolling"] = {
+	mod("MetaEnergyPerEvent", "BASE", nil),
+	div = 100,
+},
+-- Cast on Elemental Ailment carries all three of these on the same skill at once, so each
+-- needs its own mod name rather than sharing "MetaEnergyPerEvent" (which would sum them together).
+["cast_on_ignite_gain_X_centienergy_per_monster_power_on_ignite"] = {
+	mod("MetaEnergyPerEventIgnite", "BASE", nil),
+	div = 100,
+},
+["cast_on_shock_gain_X_centienergy_per_monster_power_on_shock"] = {
+	mod("MetaEnergyPerEventShock", "BASE", nil),
+	div = 100,
+},
+["cast_on_freeze_gain_X_centienergy_per_monster_power_on_freeze"] = {
+	mod("MetaEnergyPerEventFreeze", "BASE", nil),
+	div = 100,
+},
+["cast_on_melee_kill_gain_X_centienergy_per_monster_power_on_melee_kill"] = {
+	mod("MetaEnergyPerEvent", "BASE", nil),
+	div = 100,
+},
+["cast_on_melee_stun_gain_X_centienergy_per_monster_power_on_stun"] = {
+	mod("MetaEnergyPerEvent", "BASE", nil),
+	div = 100,
+},
+["cast_on_melee_stun_gain_X_centienergy_per_monster_power_on_heavy_stun"] = {
+	mod("MetaEnergyPerEventHeavy", "BASE", nil),
+	div = 100,
+},
+["cast_on_block_gain_X_centienergy_on_block"] = {
+	mod("MetaEnergyPerEvent", "BASE", nil),
+	div = 100,
+},
+["cast_on_using_charm_gain_X_centienergy_per_charm_charge_used_on_using_charm"] = {
+	mod("MetaEnergyPerEvent", "BASE", nil),
+	div = 100,
+},
+-- Minion Death expresses its constant as a divisor ("1 Energy per X% minion relative defensiveness"),
+-- not a centienergy multiplier like the others, so it gets its own mod name.
+["cast_on_minion_death_gain_1_energy_per_X_minion_relative_defensiveness_%"] = {
+	mod("MetaEnergyPerEventMinionDefensivenessDivisor", "BASE", nil),
+},
+-- On the hidden SupportMetaCastOn*Player support's own stat set, contributed to each socketed spell
+["generic_ongoing_trigger_1_maximum_energy_per_Xms_total_cast_time"] = {
+	mod("MetaEnergyCostRateMs", "BASE", nil),
+},
+["generic_ongoing_trigger_triggers_at_maximum_energy"] = {
+	flag("MetaEnergyTriggerAtMax"),
+},
+["triggered_by_generic_ongoing_trigger"] = {
+	flag("TriggeredByMetaEnergy"),
+},
 ["base_spell_cast_time_ms"] = {
 	mod("Speed", "BASE", nil, ModFlag.Cast),
 	div = 1000,
