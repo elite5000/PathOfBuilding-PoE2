@@ -441,6 +441,21 @@ local function resolveAilmentEnergyStat(env, config)
 	return ailmentType, autoDetectAilmentInfo[ailmentType]
 end
 
+-- Both metaEnergyTriggerHandler and metaInvocationTriggerHandler report a rate for whichever socketed
+-- spell is currently selected as mainSkill. If that specific spell has its own inherent cooldown
+-- (independent of the Meta/Invocation Energy mechanic - e.g. a spell with a native activation cooldown),
+-- it can't fire faster than that even when the group's Energy-based discharge-attempt rate would allow it.
+local function mainSkillCooldownRate(mainSkill)
+	local cooldown = mainSkill.skillData.cooldown
+	if not cooldown or cooldown <= 0 then
+		return m_huge
+	end
+	local icdr = calcLib.mod(mainSkill.skillModList, mainSkill.skillCfg, "CooldownRecovery")
+	local addedCooldown = mainSkill.skillModList:Sum("BASE", mainSkill.skillCfg, "CooldownRecovery")
+	local adjustedCooldown = (cooldown + addedCooldown) / icdr
+	return adjustedCooldown > 0 and (1 / adjustedCooldown) or m_huge
+end
+
 -- Shared handler for PoE2 Meta gems (Cast on Critical, Cast on Elemental Ailment, Cast on Dodge,
 -- Cast on Minion Death, Cast on Melee Kill, Cast on Melee Stun, Cast on Block, Cast on Charm Use).
 -- All of these share the Energy mechanic: every spell socketed alongside the Meta gem adds to a
@@ -567,7 +582,9 @@ local function metaEnergyTriggerHandler(env, config)
 	end
 
 	local eventsToTrigger = m_ceil(energyMax / energyPerEvent)
-	local triggerRate = eventsPerSecond / eventsToTrigger
+	local energyLimitedRate = eventsPerSecond / eventsToTrigger
+	local cooldownCap = mainSkillCooldownRate(mainSkill)
+	local triggerRate = m_min(energyLimitedRate, cooldownCap)
 
 	mainSkill.skillData.triggered = true
 	mainSkill.skillData.triggerRate = triggerRate
@@ -587,8 +604,12 @@ local function metaEnergyTriggerHandler(env, config)
 		breakdown.EffectiveSourceRate = {
 			s_format("%.2f ^8(qualifying events per second%s)", eventsPerSecond, breakdown.MetaEnergyEventsPerSecond and ", auto-derived (see above)" or ", from Configuration tab"),
 			s_format("/ %d ^8(qualifying events needed per trigger)", eventsToTrigger),
-			s_format("= %.2f ^8(%s trigger rate)", triggerRate, config.triggerName or "Meta gem"),
+			s_format("= %.2f ^8(Energy-limited trigger rate)", energyLimitedRate),
 		}
+		if cooldownCap < energyLimitedRate then
+			t_insert(breakdown.EffectiveSourceRate, s_format("min(%.2f, %.2f) ^8(Energy-limited, capped by %s's own cooldown)", energyLimitedRate, cooldownCap, mainSkill.activeEffect.grantedEffect.name))
+			t_insert(breakdown.EffectiveSourceRate, s_format("= %.2f ^8(%s trigger rate)", triggerRate, config.triggerName or "Meta gem"))
+		end
 	end
 end
 
@@ -727,7 +748,8 @@ local function metaInvocationTriggerHandler(env, config)
 	end
 
 	local generationLimitedRate = generationRatePerSecond / totalSocketedSpellCost
-	local triggerRate = m_min(cooldownRate, generationLimitedRate)
+	local spellCooldownCap = mainSkillCooldownRate(mainSkill)
+	local triggerRate = m_min(cooldownRate, generationLimitedRate, spellCooldownCap)
 
 	mainSkill.skillData.triggered = true
 	mainSkill.skillData.triggerRate = triggerRate
@@ -750,6 +772,11 @@ local function metaInvocationTriggerHandler(env, config)
 			s_format("min(%.3f, %.3f) ^8(cooldown-limited, Energy-limited)", cooldownRate, generationLimitedRate),
 			s_format("= %.3f ^8(%s trigger rate)", triggerRate, config.triggerName or "Invocation"),
 		}
+		if spellCooldownCap < m_min(cooldownRate, generationLimitedRate) then
+			t_insert(breakdown.EffectiveSourceRate, "")
+			t_insert(breakdown.EffectiveSourceRate, s_format("min(%.3f, %.3f) ^8(prior result, capped by %s's own cooldown)", m_min(cooldownRate, generationLimitedRate), spellCooldownCap, mainSkill.activeEffect.grantedEffect.name))
+			t_insert(breakdown.EffectiveSourceRate, s_format("= %.3f ^8(%s trigger rate)", triggerRate, config.triggerName or "Invocation"))
+		end
 	end
 end
 

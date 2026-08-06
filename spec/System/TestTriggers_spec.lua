@@ -44,6 +44,54 @@ describe("TestTriggers", function()
 		assert.near(5 / 12, build.calcsTab.mainOutput.Speed, 0.0001)
 	end)
 
+	it("caps Cast on Block's trigger rate by the displayed spell's own cooldown (Eye of Winter, 10s)", function()
+		-- Eye of Winter is a real Spell+Triggerable skill with its own 10s cooldown (unrelated to the Meta
+		-- Energy mechanic). Even with an enormous manual block rate pushing the Energy-limited rate far
+		-- above 1/10s, the spell itself cannot fire faster than once per 10 seconds.
+		build.skillsTab:PasteSocketGroup("Eye of Winter 20/0  1\nCast on Block 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaBlockEventsPerSecond = 1000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Eye of Winter", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.near(10, build.calcsTab.mainEnv.player.mainSkill.skillData.cooldown, 0.01)
+		assert.near(0.1, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(0.1, build.calcsTab.mainOutput.Speed, 0.0001)
+	end)
+
+	it("does not cap Cast on Block's trigger rate when the displayed spell has no cooldown of its own", function()
+		-- Same setup as above but with Comet (no native cooldown) instead of Eye of Winter: the fix must
+		-- stay a no-op when there's nothing to cap by.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Block 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaBlockEventsPerSecond = 5
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		-- ceil(300 / 25) = 12 blocks needed per trigger; 5 blocks/sec -> 5/12 triggers/sec (unchanged from
+		-- the existing "derives Cast on Block's trigger rate..." test above).
+		assert.near(5 / 12, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("caps Reaper's Invocation's trigger rate by the displayed spell's own cooldown (Eye of Winter, 10s)", function()
+		build.skillsTab:PasteSocketGroup("Eye of Winter 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Eye of Winter", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		-- Even though 1000 kills/sec would otherwise make Reaper's Invocation's own 0.2s cooldown (5/sec)
+		-- the binding constraint (per the existing "caps...by its own cooldown" test), Eye of Winter's much
+		-- slower 10s cooldown (0.1/sec) is now the tightest constraint of the three.
+		assert.near(0.1, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
 	local function equipQuarterstaff()
 		build.itemsTab:CreateDisplayItemFromRaw([[
 			New Item
