@@ -5510,11 +5510,11 @@ function calcs.offence(env, actor, activeSkill)
 				thresh = function(damage, value, effectMod) return damage * (data.gameConstants.ChillEffectMultiplier * effectMod / value) end,
 				ramping = false,
 			},
+			-- Unlike Chill, Shock's effect in PoE2 is a flat base (data.gameConstants.BaseShockMagnitude)
+			-- scaled only by "Magnitude of Shock" mods - it does not ramp with hit damage, so it doesn't fit
+			-- the damage-vs-threshold table model below; see the flatEffect branch it's routed to instead.
 			["Shock"] = {
-				effList = { 10, 20, 40 },
-				effect = function(damage, effectMod) return 50 * ((damage / enemyThreshold) ^ 0.4) * effectMod end,
-				thresh = function(damage, value, effectMod) return damage * ((50 * effectMod / value) ^ 2.5) end,
-				ramping = true,
+				flatEffect = true,
 			},
 		}
 		if activeSkill.skillTypes[SkillType.ChillingArea] or activeSkill.skillTypes[SkillType.NonHitChill] then
@@ -5564,7 +5564,22 @@ function calcs.offence(env, actor, activeSkill)
 					local moreDur = skillModList:More(cfg, "Enemy"..ailment.."Duration", "EnemyElementalAilmentDuration", "EnemyAilmentDuration") * enemyDB:More(nil, "Self"..ailment.."Duration", "SelfElementalAilmentDuration", "SelfAilmentDuration")
 					output[ailment.."Duration"] = ailmentData[ailment].duration * (1 + incDur / 100) * moreDur * debuffDurationMult
 					output[ailment.."EffectMod"] = calcLib.mod(skillModList, cfg, "Enemy"..ailment.."Magnitude", "AilmentMagnitude") * calcLib.mod(enemyDB, cfg, "Self"..ailment.."Magnitude", "AilmentMagnitude")
-					if breakdown then
+					if breakdown and val.flatEffect then
+						-- Shock's effect doesn't ramp with hit damage in PoE2 (only its chance does), so it's
+						-- shown as a flat base-times-magnitude breakdown instead of the damage/threshold table
+						-- below, which only applies to ailments (like Chill) that genuinely ramp with damage.
+						local incEffect = skillModList:Sum("INC", cfg, "Enemy"..ailment.."Magnitude", "AilmentMagnitude") + enemyDB:Sum("INC", nil, "Self"..ailment.."Magnitude", "AilmentMagnitude")
+						local moreEffect = skillModList:More(cfg, "Enemy"..ailment.."Magnitude", "AilmentMagnitude") * enemyDB:More(nil, "Self"..ailment.."Magnitude", "AilmentMagnitude")
+						output[ailment.."SourceEffect"] = m_min(100, data.gameConstants["Base"..ailment.."Magnitude"] * output[ailment.."EffectMod"])
+						breakdown[ailment.."EffectMod"] = { }
+						breakdown.multiChain(breakdown[ailment.."EffectMod"], {
+							label = s_format("Effect of %s:", ailment),
+							base = { "%d%% ^8(base)", data.gameConstants["Base"..ailment.."Magnitude"] },
+							{ "%.2f ^8(increased/reduced effect)", 1 + incEffect / 100 },
+							{ "%.2f ^8(more/less effect)", moreEffect },
+							total = s_format("= %.0f%%", output[ailment.."SourceEffect"])
+						})
+					elseif breakdown then
 						local maximum = globalOutput["Maximum"..ailment] or ailmentData[ailment].max
 						local current = m_max(m_min(globalOutput["Current"..ailment] or 0, maximum), 0)
 						local desired = m_max(m_min(enemyDB:Sum("BASE", nil, "Desired"..ailment.."Val"), maximum), 0)

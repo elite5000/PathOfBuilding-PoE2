@@ -156,4 +156,20 @@ describe("TestAilments", function()
 
 		assert.near(baseChance * 1.4, build.calcsTab.mainOutput.ShockChanceOnHit, 0.0001)
 	end)
+
+	it("shows Shock's true flat-magnitude effect in the breakdown instead of a damage-dependent curve", function()
+		build.skillsTab:PasteSocketGroup("Ball Lightning 20/0  1\n")
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.near(20, build.calcsTab.calcsOutput.ShockSourceEffect, 0.01)
+
+		local effectText = table.concat(build.calcsTab.calcsEnv.player.breakdown.ShockEffectMod, "\n")
+		assert.truthy(effectText:match("20%%"))
+		assert.truthy(effectText:match("base"))
+
+		local shockDPS = build.calcsTab.calcsEnv.player.breakdown.ShockDPS
+		assert.True(shockDPS == nil or shockDPS.rowList == nil)
+	end)
 end)
