@@ -113,6 +113,61 @@ describe("TestTriggers", function()
 		assert.is_true((build.calcsTab.mainOutput.MetaEnergyTriggerRate or 0) > 0)
 	end)
 
+	it("gives every payload spell in a multi-spell Cast on Critical bundle the same trigger rate", function()
+		-- Comet and Spark are both socketed alongside Cast on Critical, sharing one 370-Energy pool
+		-- (300 + 70, per the "Maximum Energy" test above) filled by Quarterstaff Strike's crits. Since both
+		-- payloads trigger together off the same pool, whichever one is currently viewed as the main skill
+		-- should report the identical bundle trigger rate - not its own individual cast rate.
+		equipQuarterstaff()
+
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Critical 1/0  1\nSpark 20/0  1\nQuarterstaff Strike 20/0  1")
+		build.mainSocketGroup = 1
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Comet", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		local cometRate = build.calcsTab.mainOutput.MetaEnergyTriggerRate
+		assert.is_true((cometRate or 0) > 0)
+
+		-- A second, separately-pasted group with Spark listed first makes Spark the default main skill,
+		-- sidestepping the known displaySkillList/mainActiveSkill indexing mismatch when Meta gems are
+		-- present in a group (see TestSkills_spec.lua's selectActiveSkillById workaround for the same issue).
+		build.skillsTab:PasteSocketGroup("Spark 20/0  1\nCast on Critical 1/0  1\nComet 20/0  1\nQuarterstaff Strike 20/0  1")
+		build.mainSocketGroup = 2
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Spark", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		local sparkRate = build.calcsTab.mainOutput.MetaEnergyTriggerRate
+		assert.near(cometRate, sparkRate, 0.0001)
+	end)
+
+	it("counts every payload spell in a multi-spell Cast on Critical bundle toward Full DPS", function()
+		-- Full DPS iterates every active skill in the group, temporarily reassigning mainSkill to each one
+		-- in turn (Calcs.lua's "fullEnv.player.mainSkill = activeSkill" before each calcs.perform pass) -
+		-- an integration path the single-mainSkill tests above never exercise. Comet and Spark should both
+		-- show up as separate, non-zero contributors, each computed off the shared bundle trigger rate.
+		equipQuarterstaff()
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Critical 1/0  1\nSpark 20/0  1\nQuarterstaff Strike 20/0  1")
+		build.mainSocketGroup = 1
+		build.skillsTab.socketGroupList[1].includeInFullDPS = true
+		build.buildFlag = true
+		runCallback("OnFrame")
+
+		local calcsModule = LoadModule("Modules/Calcs")
+		local fullDPS = calcsModule.calcFullDPS(build, "CALCULATOR", {}, {})
+
+		local cometDPS, sparkDPS
+		for _, skill in ipairs(fullDPS.skills) do
+			if skill.name == "Comet" then cometDPS = skill.dps end
+			if skill.name == "Spark" then sparkDPS = skill.dps end
+		end
+
+		assert.is_true((cometDPS or 0) > 0)
+		assert.is_true((sparkDPS or 0) > 0)
+		assert.is_true(fullDPS.combinedDPS >= cometDPS + sparkDPS - 0.01)
+	end)
+
 	it("still lets the manual override win over Cast on Critical's auto-derivation", function()
 		equipQuarterstaff()
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Critical 1/0  1\nQuarterstaff Strike 20/0  1")
