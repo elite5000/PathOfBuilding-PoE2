@@ -5060,6 +5060,28 @@ function calcs.offence(env, actor, activeSkill)
 
 			globalOutput[ailment .. "ChancePerHit"] = output[ailment .. "ChanceOnHit"] * (1 - output.CritChance / 100) + output[ailment .. "ChanceOnCrit"] * output.CritChance / 100
 
+			-- Ignite (unlike Poison/Bleed) accumulates a separate "Flammability" chance-to-ignite value from
+			-- each Fire hit, stacking with other still-active instances (each lasting BaseFlammabilityDuration
+			-- seconds) before the current hit rolls against the combined total. PoB only models the single-hit
+			-- contribution above; this estimates the sustained steady-state total for fast-hitting builds,
+			-- as an additional informational output - it does not feed into IgniteDPS or any other calculation.
+			if ailment == "Ignite" then
+				local hitRate = globalOutput.HitSpeed or globalOutput.Speed or 0
+				if hitRate > 0 then
+					globalOutput.IgniteChanceSteadyState = m_min(100, globalOutput.IgniteChancePerHit * hitRate * data.gameConstants.BaseFlammabilityDuration)
+					if breakdown then
+						breakdown.IgniteChanceSteadyState = { }
+						breakdown.multiChain(breakdown.IgniteChanceSteadyState, {
+							label = "Sustained Ignite chance ^8(estimated steady-state Flammability stacking):",
+							base = { "%.1f%% ^8(chance per hit)", globalOutput.IgniteChancePerHit },
+							{ "%.2f ^8(hits per second)", hitRate },
+							{ "%.1f ^8(seconds a Flammability instance remains active)", data.gameConstants.BaseFlammabilityDuration },
+							total = s_format("= %.0f%% ^8(capped at 100%%)", globalOutput.IgniteChanceSteadyState)
+						})
+					end
+				end
+			end
+
 			-- We will be using a weighted average calculation
 			local maxStacks = 1
 			if skillModList:Flag(skillCfg, ailment .. "CanStack") then

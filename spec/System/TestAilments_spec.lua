@@ -172,4 +172,32 @@ describe("TestAilments", function()
 		local shockDPS = build.calcsTab.calcsEnv.player.breakdown.ShockDPS
 		assert.True(shockDPS == nil or shockDPS.rowList == nil)
 	end)
+
+	it("estimates sustained Ignite chance from steady-state Flammability stacking without changing existing Ignite outputs", function()
+		build.skillsTab:PasteSocketGroup("Fireball 20/0  1\n")
+		build.configTab.input.customMods = "100% chance to Ignite"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		local chancePerHit = build.calcsTab.calcsOutput.IgniteChancePerHit
+		local hitRate = build.calcsTab.calcsOutput.HitSpeed or build.calcsTab.calcsOutput.Speed
+		local onHit = build.calcsTab.calcsOutput.IgniteChanceOnHit
+		local onCrit = build.calcsTab.calcsOutput.IgniteChanceOnCrit
+		local dps = build.calcsTab.calcsOutput.IgniteDPS
+		assert.True(chancePerHit and chancePerHit > 0)
+		assert.True(hitRate and hitRate > 0)
+
+		local expected = math.min(100, chancePerHit * hitRate * 8)
+		assert.near(expected, build.calcsTab.calcsOutput.IgniteChanceSteadyState, 0.01)
+		assert.True(build.calcsTab.calcsOutput.IgniteChanceSteadyState >= chancePerHit)
+
+		local effectText = table.concat(build.calcsTab.calcsEnv.player.breakdown.IgniteChanceSteadyState, "\n")
+		assert.truthy(effectText:match("per hit"))
+		assert.truthy(effectText:match("per second"))
+
+		-- The new estimate must not change any existing Ignite output.
+		assert.are.equals(onHit, build.calcsTab.calcsOutput.IgniteChanceOnHit)
+		assert.are.equals(onCrit, build.calcsTab.calcsOutput.IgniteChanceOnCrit)
+		assert.are.equals(dps, build.calcsTab.calcsOutput.IgniteDPS)
+	end)
 end)
