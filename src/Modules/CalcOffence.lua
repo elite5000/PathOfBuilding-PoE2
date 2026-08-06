@@ -5528,7 +5528,7 @@ function calcs.offence(env, actor, activeSkill)
 				breakdown.DotChill = { }
 				breakdown.multiChain(breakdown.DotChill, {
 					label = s_format("Effect of Chill: ^8(capped at %d%%)", skillModList:Override(nil, "ChillMax") or ailmentData.Chill.max),
-					base = s_format("%d%% ^8(base)", ailmentData.Chill.default),
+					base = { "%d%% ^8(base)", ailmentData.Chill.default },
 					{ "%.2f ^8(increased/reduced effect of chill)", 1 + incChill / 100 },
 					{ "%.2f ^8(more/less effect of chill)", moreChill },
 					total = s_format("= %.0f%%", output.ChillSourceEffect)
