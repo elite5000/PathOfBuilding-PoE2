@@ -667,12 +667,27 @@ local function metaInvocationTriggerHandler(env, config)
 		end
 	end
 
-	local energyMax = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyMax")
+	-- "Invocated skills have X% increased Maximum Energy" scales the fixed pool itself (MetaEnergyMaxIncrease),
+	-- distinct from "Meta Skills gain X% increased Energy" (MetaEnergyGeneration), which scales generation
+	-- rate. The mod is tagged Condition:InvocationSkill (matching "Invocated Spells deal/have..." mods
+	-- elsewhere), which nothing in the calc engine sets automatically for SkillType.Invocation skills - use
+	-- a config-scoped copy so it reads true here without mutating the Invocation's real skillCfg/mod list.
+	local invocationCfg = copyTable(metaSkill.skillCfg, true)
+	invocationCfg.skillCond = setmetatable({ InvocationSkill = true }, { __index = metaSkill.skillCfg.skillCond })
+	local energyMaxBase = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyMax")
+	local energyMaxMult = calcLib.mod(metaSkill.skillModList, invocationCfg, "MetaEnergyMaxIncrease")
+	local energyMax = energyMaxBase * energyMaxMult
 	output.MetaEnergyMax = energyMax
 	skillFlags.metaEnergyTriggered = true
 	if breakdown then
 		breakdown.MetaEnergyMax = costBreakdown
-		t_insert(breakdown.MetaEnergyMax, s_format("= %.1f ^8Energy cost of one discharge (fixed Maximum Energy: %.1f)", totalSocketedSpellCost, energyMax))
+		if energyMaxMult ~= 1 then
+			t_insert(breakdown.MetaEnergyMax, s_format("%.1f ^8(fixed Maximum Energy)", energyMaxBase))
+			t_insert(breakdown.MetaEnergyMax, s_format("x %.2f ^8(increased/more Maximum Energy)", energyMaxMult))
+			t_insert(breakdown.MetaEnergyMax, s_format("= %.1f ^8Energy cost of one discharge", totalSocketedSpellCost))
+		else
+			t_insert(breakdown.MetaEnergyMax, s_format("= %.1f ^8Energy cost of one discharge (fixed Maximum Energy: %.1f)", totalSocketedSpellCost, energyMax))
+		end
 	end
 
 	-- Generation rate: manual input (config.generationRateVar), converted to Energy/sec one of three ways

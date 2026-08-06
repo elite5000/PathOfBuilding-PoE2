@@ -361,6 +361,43 @@ describe("TestTriggers", function()
 		assert.near(35, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
+	it("scales Invocation's fixed Maximum Energy by an explicit increased-Maximum-Energy modifier", function()
+		-- "Invocated skills have X% increased Maximum Energy" scales the fixed 500 pool itself, distinct
+		-- from "Meta Skills gain X% increased Energy" (generation rate) - found via ultrareview to have
+		-- previously been silently mismapped onto the wrong stat (MetaEnergyGeneration instead of a
+		-- dedicated Maximum Energy stat).
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.customMods = "Invocated skills have 30% increased Maximum Energy"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(650, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
+	end)
+
+	it("parses Energy refund/discount chance mods cleanly instead of silently mismapping them onto generation", function()
+		-- These aren't modeled as an actual mechanic yet (no expected-value refund/discount applied to
+		-- Energy consumption), but they must not silently inflate MetaEnergyGeneration either, since
+		-- calcLib.mod only reads INC/MORE and these parse as BASE - previously a no-op dressed up as a
+		-- real modifier. Verified here as a clean parse with no change to the resulting trigger rate.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 2
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+		local baseRate = build.calcsTab.mainOutput.MetaEnergyTriggerRate
+
+		build.configTab.input.customMods = "20% chance for Trigger skills to refund half of Energy Spent\nInvocated Spells have 40% chance to consume half as much Energy"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(baseRate, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
 	it("shows Spellslinger's fixed Maximum Energy even before its generation rate is set", function()
 		-- No other spell in the group is a valid auto-detect source for Spellslinger (any Spell socketed
 		-- alongside it also becomes one of its own triggered targets), so with no manual input this stays

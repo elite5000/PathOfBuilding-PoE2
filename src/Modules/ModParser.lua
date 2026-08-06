@@ -233,7 +233,19 @@ local modNameList = {
 	["reservation efficiency of skills"] = "ReservationEfficiency",
 	["mana reservation efficiency"] = "ManaReservationEfficiency",
 	["life reservation efficiency"] = "LifeReservationEfficiency",
-	-- Meta gem (Cast on X) Energy mechanic, e.g. "Meta Skills gain 15% increased Energy"
+	-- Meta gem (Cast on X) Energy mechanic, e.g. "Meta Skills gain 15% increased Energy". The bare "energy"
+	-- catch-all below also matches unrelated real mods that happen to contain the word "Energy" without
+	-- being about generation rate at all - these longer, more specific entries take priority over it via
+	-- scan()'s longest-match rule.
+	-- "Invocated skills have X% increased Maximum Energy" scales the fixed Energy pool, not generation.
+	["maximum energy"] = "MetaEnergyMaxIncrease",
+	-- Probabilistic Energy-refund/discount mods ("chance to consume half as much Energy", "chance to
+	-- refund half of Energy Spent") aren't modeled yet - explicitly recognized as no-ops (matching the
+	-- ["on enemies"]/["while active"] convention elsewhere in this file) so they don't fall through to the
+	-- bare "energy" catch-all and get silently miscounted as generation, which has no effect anyway since
+	-- these are BASE-type modifiers and calcLib.mod only reads INC/MORE.
+	["to consume half as much energy"] = { },
+	["for trigger skills to refund half of energy spent"] = { },
 	["energy"] = "MetaEnergyGeneration",
 	-- Primary defences
 	["maximum energy shield"] = "EnergyShield",
