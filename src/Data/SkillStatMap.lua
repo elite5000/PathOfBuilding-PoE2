@@ -2353,6 +2353,12 @@ return {
 ["barrier_invocation_gain_1_energy_per_X_energy_shield_damage_taken_when_hit"] = {
 	mod("MetaEnergyPerESDamageTakenDivisor", "BASE", nil),
 },
+-- Spellslinger (Stage 6c): "X centienergy per 10ms of base cast time" - div=100 gives Energy per 10ms;
+-- the handler multiplies by 100 (10ms units per second) and by the source spell's own base cast time.
+["spellslinger_invocation_gain_X_centienergy_per_10ms_base_cast_time"] = {
+	mod("MetaEnergyPerCastTimeSecond", "BASE", nil),
+	div = 100,
+},
 -- On the hidden SupportMetaCastOn*Player support's own stat set, contributed to each socketed spell
 ["generic_ongoing_trigger_1_maximum_energy_per_Xms_total_cast_time"] = {
 	mod("MetaEnergyCostRateMs", "BASE", nil),

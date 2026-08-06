@@ -240,4 +240,44 @@ describe("TestTriggers", function()
 
 		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
+
+	it("shows Spellslinger's fixed Maximum Energy even before its generation rate is set", function()
+		-- No other spell in the group is a valid auto-detect source for Spellslinger (any Spell socketed
+		-- alongside it also becomes one of its own triggered targets), so with no manual input this stays
+		-- unresolved, same as Barrier/Reaper's Invocation with no input.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nSpellslinger 1/0  1")
+		build.mainSocketGroup = 1
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Comet", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.near(500, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
+		assert.is_nil(build.calcsTab.mainOutput.MetaEnergyTriggerRate)
+	end)
+
+	it("caps Spellslinger's discharge rate by Energy generation when generation is the bottleneck", function()
+		-- Comet alone costs 300 Energy per discharge. At 30 Energy/sec generated, the Energy-limited rate
+		-- (30/300 = 0.1/sec) is well below the 0.2s-cooldown cap (5/sec).
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nSpellslinger 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaSpellslingerCastsPerSecond = 30
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(30 / 300, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("caps Spellslinger's discharge rate by its own cooldown when generation is abundant", function()
+		-- At 100000 Energy/sec generated, the Energy-limited rate (100000/300 = 333/sec) exceeds the
+		-- 0.2s-cooldown cap, so the cooldown (5/sec) is the binding constraint.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nSpellslinger 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaSpellslingerCastsPerSecond = 100000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
 end)

@@ -399,12 +399,14 @@ end
 -- dedicated follow-up work, not a naive "reuse the Crit shape" attempt, so for now Freeze/Shock/Ignite all
 -- require the manual Stage 1 override, same as Ignite always did.
 -- requireMelee restricts candidates to SkillType.Melee, for Meta gems that only generate Energy from
--- melee hits specifically (Thundergod's Wrath, Fire Spell on Melee Hit).
-local function findAutoEnergySource(env, actor, mainSkill, requireMelee)
+-- melee hits specifically (Thundergod's Wrath, Fire Spell on Melee Hit). requireSpell restricts to
+-- SkillType.Spell (and drops the Attack/Damage requirement, since "cast Spells" doesn't require a hit),
+-- for Spellslinger, which generates Energy from casting rather than hitting.
+local function findAutoEnergySource(env, actor, mainSkill, requireMelee, requireSpell)
 	local bestSkill, bestUuid, bestRate
 	for _, skill in ipairs(actor.activeSkillList) do
 		if skill ~= mainSkill and skill.socketGroup == mainSkill.socketGroup
-			and (skill.skillTypes[SkillType.Attack] or skill.skillTypes[SkillType.Damage])
+			and (requireSpell and skill.skillTypes[SkillType.Spell] or (not requireSpell and (skill.skillTypes[SkillType.Attack] or skill.skillTypes[SkillType.Damage])))
 			and (not requireMelee or skill.skillTypes[SkillType.Melee])
 			and not skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
 			local uuid = cacheSkillUUID(skill, env)
@@ -643,13 +645,18 @@ local function metaInvocationTriggerHandler(env, config)
 		t_insert(breakdown.MetaEnergyMax, s_format("= %.1f ^8Energy cost of one discharge (fixed Maximum Energy: %.1f)", totalSocketedSpellCost, energyMax))
 	end
 
-	-- Generation rate: manual input (config.generationRateVar), converted to Energy/sec one of two ways
+	-- Generation rate: manual input (config.generationRateVar), converted to Energy/sec one of three ways
 	-- depending on the gem, then scaled by "Meta Skills gain X% increased/more Energy" mods on the
 	-- Invocation itself. config.generationDivisorStat: input is a continuous quantity (e.g. Barrier
 	-- Invocation's "ES damage taken/sec"), divided by the gem's own divisor constant.
 	-- config.generationEnergyPerEventStat: input is an event rate (e.g. Reaper's Invocation's "melee
 	-- kills/sec"), multiplied by the gem's own per-event constant (optionally scaled by monster Power,
 	-- same as the auto-fire Meta gems' powerScaled handling).
+	-- config.generationPerCastTimeStat (Spellslinger): Energy per cast depends on the caster's own base
+	-- cast time, so this auto-detects a self-cast Spell in the group the same way Cast on Critical does
+	-- (findAutoEnergySource), and uses its cast rate (or the manual override, if set) x its own base cast
+	-- time x the gem's per-cast-time-second constant. A source skill is always needed for its base cast
+	-- time, even when the rate itself is manually overridden.
 	local generationInput = env.build.configTab.input[config.generationRateVar] or 0
 	local generationMult = calcLib.mod(metaSkill.skillModList, metaSkill.skillCfg, "MetaEnergyGeneration")
 	local generationRatePerSecond = 0
@@ -663,6 +670,31 @@ local function metaInvocationTriggerHandler(env, config)
 			perEvent = perEvent * ((enemyPower and enemyPower > 0) and enemyPower or 1)
 		end
 		generationRatePerSecond = generationInput * perEvent * generationMult
+	elseif config.generationPerCastTimeStat then
+		-- Auto-detection needs a self-cast, non-triggered Spell in the same group - but Spellslinger's own
+		-- hidden support attaches to every compatible Triggerable spell in that same group, so a genuine
+		-- "self-cast, untriggered Spell" companion essentially never exists there in practice. Attempted
+		-- as best-effort for the rare case a valid source does exist; otherwise config.generationRateVar
+		-- (the manual override) is read directly as the final Energy/sec, since there's no source to
+		-- supply a base cast time to decompose it against.
+		local perCastTimeSecond = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, config.generationPerCastTimeStat) or 0
+		local source, uuid = findAutoEnergySource(env, actor, mainSkill, false, true)
+		if source and uuid then
+			local cached = GlobalCache.cachedData[env.mode][uuid]
+			local sourceBaseCastTime = source.activeEffect.grantedEffect.castTime or 0
+			local castRate = (cached and (cached.HitSpeed or cached.Speed)) or 0
+			generationRatePerSecond = castRate * sourceBaseCastTime * perCastTimeSecond * 100 * generationMult
+			if breakdown and generationRatePerSecond > 0 then
+				breakdown.MetaEnergyEventsPerSecond = {
+					s_format("%.2f ^8(%s cast rate)", castRate, source.activeEffect.grantedEffect.name),
+					s_format("x %.2fs ^8(%s base cast time)", sourceBaseCastTime, source.activeEffect.grantedEffect.name),
+					s_format("x %.2f ^8(Energy generated per second of base cast time)", perCastTimeSecond * 100),
+					s_format("= %.2f ^8(Energy generated per second)", generationRatePerSecond),
+				}
+			end
+		elseif generationInput > 0 then
+			generationRatePerSecond = generationInput * generationMult
+		end
 	end
 
 	-- The Invocation's own activation cooldown, independent of any config input.
@@ -1692,6 +1724,10 @@ local configTable = {
 				generationRateVar = "metaReapersInvocationMeleeKillsPerSecond",
 				generationEnergyPerEventStat = "MetaEnergyPerEvent", generationPowerScaled = true}
 	end,
+	["supportspellslingerplayer"] = function()
+		return {customHandler = metaInvocationTriggerHandler, triggerName = "Spellslinger",
+				generationRateVar = "metaSpellslingerCastsPerSecond", generationPerCastTimeStat = "MetaEnergyPerCastTimeSecond"}
+	end,
 	["snipe"] = function(env)
 		local snipeStages = m_min(env.player.modDB:Sum("BASE", nil, "Multiplier:SnipeStage"), env.player.modDB:Sum("BASE", nil, "Multiplier:SnipeStagesMax"))
 		local snipeHitMulti = env.player.mainSkill.skillModList:Sum("BASE", env.player.mainSkill.skillCfg, "snipeHitMulti")
@@ -1841,6 +1877,7 @@ local metaEnergySupportNames = {
 	["supportmetacastfirespellonhitplayer"] = true,
 	["supportbarrierinvocationplayer"] = true,
 	["supportreapersinvocationplayer"] = true,
+	["supportspellslingerplayer"] = true,
 }
 
 -- calcs.triggers(env, env.player) is currently disabled globally in CalcPerform.lua ("TURNING OFF
