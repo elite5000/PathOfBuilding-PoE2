@@ -212,4 +212,32 @@ describe("TestTriggers", function()
 
 		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
+
+	it("caps Reaper's Invocation's discharge rate by Energy generation when generation is the bottleneck", function()
+		-- Comet alone costs 300 Energy per discharge. 30 Energy per monster Power per melee kill (at 1
+		-- Power, i.e. a Normal enemy); 2 kills/sec -> 60 Energy/sec, well under the 0.2s-cooldown cap (5/sec).
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 2
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(60 / 300, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("caps Reaper's Invocation's discharge rate by its own cooldown when generation is abundant", function()
+		-- 1000 kills/sec -> 30000 Energy/sec; Energy-limited rate (30000/300 = 100/sec) exceeds the
+		-- 0.2s-cooldown cap, so the cooldown (5/sec) is the binding constraint.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
 end)

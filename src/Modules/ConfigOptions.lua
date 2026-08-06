@@ -371,6 +371,8 @@ local configSettings = {
 	-- discharged, reported as a steady-state rate capped by its own cooldown or Energy generation.
 	{ label = "Barrier Invocation:", ifSkill = "Barrier Invocation" },
 	{ var = "metaBarrierInvocationESDamageTakenPerSecond", type = "float", label = "Energy Shield damage taken/sec:", ifSkill = "Barrier Invocation", tooltip = "The rate at which your Energy Shield is damaged by enemy hits, used to calculate the Energy generation rate. PoB doesn't yet estimate incoming damage automatically, so this must be set manually." },
+	{ label = "Reaper's Invocation:", ifSkill = "Reaper's Invocation" },
+	{ var = "metaReapersInvocationMeleeKillsPerSecond", type = "float", label = "Melee kills/sec:", ifSkill = "Reaper's Invocation", tooltip = "The rate at which you kill enemies with melee attacks, used to calculate the Energy generation rate." },
 	{ label = "Cruelty:", ifSkill = "Cruelty" },
 	{ var = "overrideCruelty", type = "count", label = "Damage % (if not maximum):", ifSkill = "Cruelty", tooltip = "Cruelty is a buff provided by Cruelty Support which grants\nup to 40% more damage over time to the skills it supports.", apply = function(val, modList, enemyModList)
 		modList:NewMod("Cruelty", "OVERRIDE", m_min(val, 40), "Config", { type = "Condition", var = "Combat" })

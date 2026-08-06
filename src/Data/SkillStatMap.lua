@@ -2311,6 +2311,12 @@ return {
 	mod("MetaEnergyPerEvent", "BASE", nil),
 	div = 100,
 },
+-- Reaper's Invocation (Stage 6b): same "per monster Power per event" shape as Cast on Melee Kill above;
+-- safe to share MetaEnergyPerEvent since it's only ever read off the current Invocation's own stat set.
+["melee_kill_invocation_gain_X_centienergy_per_monster_power_on_melee_kill"] = {
+	mod("MetaEnergyPerEvent", "BASE", nil),
+	div = 100,
+},
 ["cast_on_melee_stun_gain_X_centienergy_per_monster_power_on_stun"] = {
 	mod("MetaEnergyPerEvent", "BASE", nil),
 	div = 100,

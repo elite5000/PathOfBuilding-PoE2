@@ -643,12 +643,27 @@ local function metaInvocationTriggerHandler(env, config)
 		t_insert(breakdown.MetaEnergyMax, s_format("= %.1f ^8Energy cost of one discharge (fixed Maximum Energy: %.1f)", totalSocketedSpellCost, energyMax))
 	end
 
-	-- Generation rate: manual input (config.generationRateVar) divided by the gem's own ES-damage-taken
-	-- divisor constant, scaled by "Meta Skills gain X% increased/more Energy" mods on the Invocation itself.
+	-- Generation rate: manual input (config.generationRateVar), converted to Energy/sec one of two ways
+	-- depending on the gem, then scaled by "Meta Skills gain X% increased/more Energy" mods on the
+	-- Invocation itself. config.generationDivisorStat: input is a continuous quantity (e.g. Barrier
+	-- Invocation's "ES damage taken/sec"), divided by the gem's own divisor constant.
+	-- config.generationEnergyPerEventStat: input is an event rate (e.g. Reaper's Invocation's "melee
+	-- kills/sec"), multiplied by the gem's own per-event constant (optionally scaled by monster Power,
+	-- same as the auto-fire Meta gems' powerScaled handling).
 	local generationInput = env.build.configTab.input[config.generationRateVar] or 0
-	local divisor = config.generationDivisorStat and metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, config.generationDivisorStat)
 	local generationMult = calcLib.mod(metaSkill.skillModList, metaSkill.skillCfg, "MetaEnergyGeneration")
-	local generationRatePerSecond = (divisor and divisor > 0) and (generationInput / divisor) * generationMult or 0
+	local generationRatePerSecond = 0
+	if config.generationDivisorStat then
+		local divisor = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, config.generationDivisorStat)
+		generationRatePerSecond = (divisor and divisor > 0) and (generationInput / divisor) * generationMult or 0
+	elseif config.generationEnergyPerEventStat then
+		local perEvent = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, config.generationEnergyPerEventStat) or 0
+		if config.generationPowerScaled then
+			local enemyPower = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "Multiplier:EnemyPower")
+			perEvent = perEvent * ((enemyPower and enemyPower > 0) and enemyPower or 1)
+		end
+		generationRatePerSecond = generationInput * perEvent * generationMult
+	end
 
 	-- The Invocation's own activation cooldown, independent of any config input.
 	local baseCooldown = (metaSkill.activeEffect.grantedEffect.levels[metaSkill.activeEffect.level] or {}).cooldown or metaSkill.skillData.cooldown or 0
@@ -1672,6 +1687,11 @@ local configTable = {
 		return {customHandler = metaInvocationTriggerHandler, triggerName = "Barrier Invocation",
 				generationRateVar = "metaBarrierInvocationESDamageTakenPerSecond", generationDivisorStat = "MetaEnergyPerESDamageTakenDivisor"}
 	end,
+	["supportreapersinvocationplayer"] = function()
+		return {customHandler = metaInvocationTriggerHandler, triggerName = "Reaper's Invocation",
+				generationRateVar = "metaReapersInvocationMeleeKillsPerSecond",
+				generationEnergyPerEventStat = "MetaEnergyPerEvent", generationPowerScaled = true}
+	end,
 	["snipe"] = function(env)
 		local snipeStages = m_min(env.player.modDB:Sum("BASE", nil, "Multiplier:SnipeStage"), env.player.modDB:Sum("BASE", nil, "Multiplier:SnipeStagesMax"))
 		local snipeHitMulti = env.player.mainSkill.skillModList:Sum("BASE", env.player.mainSkill.skillCfg, "snipeHitMulti")
@@ -1820,6 +1840,7 @@ local metaEnergySupportNames = {
 	["supportmetacastlightningspellonhitplayer"] = true,
 	["supportmetacastfirespellonhitplayer"] = true,
 	["supportbarrierinvocationplayer"] = true,
+	["supportreapersinvocationplayer"] = true,
 }
 
 -- calcs.triggers(env, env.player) is currently disabled globally in CalcPerform.lua ("TURNING OFF
