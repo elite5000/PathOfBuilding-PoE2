@@ -748,8 +748,24 @@ local function metaInvocationTriggerHandler(env, config)
 	end
 
 	local generationLimitedRate = generationRatePerSecond / totalSocketedSpellCost
+
+	-- A single Invocation activation can chain multiple discharges at once if Energy has banked up faster
+	-- than the cooldown drains it ("triggers spells... a number of times based on the amount of energy
+	-- used") - not just one discharge per activation. Energy banked between activations is capped at the
+	-- fixed Maximum Energy pool (energyMax); generation beyond that between two activations is wasted, same
+	-- "excess is discarded" rule the auto-fire gems already use.
+	local burstRate = m_huge
+	local dischargesPerActivation = 0
+	if cooldown > 0 then
+		local energyPerActivation = m_min(generationRatePerSecond * cooldown, energyMax)
+		dischargesPerActivation = m_floor(energyPerActivation / totalSocketedSpellCost)
+		if dischargesPerActivation >= 1 then
+			burstRate = cooldownRate * dischargesPerActivation
+		end
+	end
+
 	local spellCooldownCap = mainSkillCooldownRate(mainSkill)
-	local triggerRate = m_min(cooldownRate, generationLimitedRate, spellCooldownCap)
+	local triggerRate = m_min(generationLimitedRate, burstRate, spellCooldownCap)
 
 	mainSkill.skillData.triggered = true
 	mainSkill.skillData.triggerRate = triggerRate
@@ -767,16 +783,21 @@ local function metaInvocationTriggerHandler(env, config)
 		}
 		breakdown.EffectiveSourceRate = {
 			s_format("%.3fs ^8(Invocation cooldown, after cooldown recovery)", cooldown),
-			s_format("= %.3f ^8(cooldown-limited discharge rate)", cooldownRate),
-			"",
-			s_format("min(%.3f, %.3f) ^8(cooldown-limited, Energy-limited)", cooldownRate, generationLimitedRate),
-			s_format("= %.3f ^8(%s trigger rate)", triggerRate, config.triggerName or "Invocation"),
+			s_format("= %.3f ^8(activation rate)", cooldownRate),
 		}
-		if spellCooldownCap < m_min(cooldownRate, generationLimitedRate) then
-			t_insert(breakdown.EffectiveSourceRate, "")
-			t_insert(breakdown.EffectiveSourceRate, s_format("min(%.3f, %.3f) ^8(prior result, capped by %s's own cooldown)", m_min(cooldownRate, generationLimitedRate), spellCooldownCap, mainSkill.activeEffect.grantedEffect.name))
-			t_insert(breakdown.EffectiveSourceRate, s_format("= %.3f ^8(%s trigger rate)", triggerRate, config.triggerName or "Invocation"))
+		if dischargesPerActivation >= 1 then
+			t_insert(breakdown.EffectiveSourceRate, s_format("x %d ^8(discharges chained per activation, from banked Energy)", dischargesPerActivation))
+			t_insert(breakdown.EffectiveSourceRate, s_format("= %.3f ^8(cooldown-limited discharge rate)", burstRate))
 		end
+		t_insert(breakdown.EffectiveSourceRate, "")
+		t_insert(breakdown.EffectiveSourceRate, s_format("min(%.3f, %.3f) ^8(cooldown-limited, Energy-limited)", burstRate, generationLimitedRate))
+		local minusCooldownCap = m_min(generationLimitedRate, burstRate)
+		if spellCooldownCap < minusCooldownCap then
+			t_insert(breakdown.EffectiveSourceRate, s_format("= %.3f", minusCooldownCap))
+			t_insert(breakdown.EffectiveSourceRate, "")
+			t_insert(breakdown.EffectiveSourceRate, s_format("min(%.3f, %.3f) ^8(prior result, capped by %s's own cooldown)", minusCooldownCap, spellCooldownCap, mainSkill.activeEffect.grantedEffect.name))
+		end
+		t_insert(breakdown.EffectiveSourceRate, s_format("= %.3f ^8(%s trigger rate)", triggerRate, config.triggerName or "Invocation"))
 	end
 end
 

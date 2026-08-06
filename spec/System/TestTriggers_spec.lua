@@ -344,6 +344,23 @@ describe("TestTriggers", function()
 		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
+	it("chains multiple discharges per activation when Energy banks up faster than the cooldown drains it", function()
+		-- Spark costs only 70 Energy per discharge (vs Comet's 300 in the tests above). At 1000 kills/sec
+		-- (30000 Energy/sec) and a 0.2s cooldown, up to 30000*0.2 = 6000 Energy could bank between
+		-- activations, capped at the fixed 500 Maximum Energy pool. floor(500/70) = 7 discharges fit in that
+		-- cap, so one activation (5/sec) chains 7 discharges: 5*7 = 35/sec - not just 5/sec, which is what a
+		-- one-discharge-per-activation model (the old formula) would have reported.
+		build.skillsTab:PasteSocketGroup("Spark 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(35, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
 	it("shows Spellslinger's fixed Maximum Energy even before its generation rate is set", function()
 		-- No other spell in the group is a valid auto-detect source for Spellslinger (any Spell socketed
 		-- alongside it also becomes one of its own triggered targets), so with no manual input this stays
