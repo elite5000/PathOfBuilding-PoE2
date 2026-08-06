@@ -462,8 +462,10 @@ end
 -- shared maximum-Energy pool, qualifying events add Energy, and every socketed spell triggers
 -- together once the pool is filled. See docs/New Feature - Meta Skills/ for the underlying research.
 --
--- Stage 1: the qualifying-event rate is a manual per-build input (config.eventsVar) rather than
--- being derived from PoB's own combat outputs - that derivation is future work per gem.
+-- The qualifying-event rate is a manual per-build input (config.eventsVar) by default; some gems
+-- (config.autoDetectCrit / config.autoDetectHit, see findAutoEnergySource below) instead auto-derive it
+-- from a self-cast source skill's combat outputs, falling back to the manual input if no source is found
+-- or the input is explicitly set (a manual value always takes precedence over auto-derivation).
 local function metaEnergyTriggerHandler(env, config)
 	local actor = config.actor
 	local output = actor.output
