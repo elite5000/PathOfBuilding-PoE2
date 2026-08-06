@@ -280,4 +280,60 @@ describe("TestTriggers", function()
 
 		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
+
+	it("shows Elemental Invocation's fixed Maximum Energy even before its generation rate is set", function()
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nElemental Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Comet", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.near(500, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
+		assert.is_nil(build.calcsTab.mainOutput.MetaEnergyTriggerRate)
+	end)
+
+	it("caps Elemental Invocation's discharge rate by Energy generation when generation is the bottleneck (Freeze)", function()
+		-- Comet alone costs 300 Energy per discharge. Freeze's constant is 10 Energy per monster Power per
+		-- event (1 Power for a Normal enemy); 2 freezes/sec -> 20 Energy/sec, well under the 0.2s-cooldown
+		-- cap (5/sec). Freeze is the selector's default, so it's left unset here.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nElemental Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaElementalInvocationEventsPerSecond = 2
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(20 / 300, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("caps Elemental Invocation's discharge rate by its own cooldown when generation is abundant", function()
+		-- 1000 freezes/sec -> 10000 Energy/sec; Energy-limited rate (10000/300 = 33.3/sec) exceeds the
+		-- 0.2s-cooldown cap, so the cooldown (5/sec) is the binding constraint.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nElemental Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaElementalInvocationEventsPerSecond = 1000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("uses Shock's Energy constant instead of Freeze's when the ailment selector is switched", function()
+		-- Shock/Ignite's constant is 1 Energy per monster Power per event (10x smaller than Freeze's), so
+		-- 30 events/sec -> 30 Energy/sec here, versus 300 Energy/sec if this were still reading Freeze's
+		-- constant. Energy-limited rate: 30/300 = 0.1/sec, matching Reaper's/Spellslinger's 30-Energy/sec cases.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nElemental Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaElementalInvocationAilmentType = "Shock"
+		build.configTab.input.metaElementalInvocationEventsPerSecond = 30
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(30 / 300, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
 end)

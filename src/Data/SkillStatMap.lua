@@ -2307,6 +2307,20 @@ return {
 	mod("MetaEnergyPerEventFreeze", "BASE", nil),
 	div = 100,
 },
+-- Elemental Invocation carries the same three sub-stats as Cast on Elemental Ailment above, but under its
+-- own stat names - reuses the same mod names since the two gems' constants are never read off each other.
+["elemental_invocation_gain_X_centienergy_per_monster_power_on_ignite"] = {
+	mod("MetaEnergyPerEventIgnite", "BASE", nil),
+	div = 100,
+},
+["elemental_invocation_gain_X_centienergy_per_monster_power_on_shock"] = {
+	mod("MetaEnergyPerEventShock", "BASE", nil),
+	div = 100,
+},
+["elemental_invocation_gain_X_centienergy_per_monster_power_on_freeze"] = {
+	mod("MetaEnergyPerEventFreeze", "BASE", nil),
+	div = 100,
+},
 ["cast_on_melee_kill_gain_X_centienergy_per_monster_power_on_melee_kill"] = {
 	mod("MetaEnergyPerEvent", "BASE", nil),
 	div = 100,

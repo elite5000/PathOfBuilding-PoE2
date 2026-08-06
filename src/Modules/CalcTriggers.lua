@@ -433,6 +433,14 @@ local autoDetectAilmentInfo = {
 	Ignite = { energyStat = "MetaEnergyPerEventIgnite" },
 }
 
+-- Shared by metaEnergyTriggerHandler (Cast on Elemental Ailment) and metaInvocationTriggerHandler
+-- (Elemental Invocation) - both gems expose the same Freeze/Shock/Ignite selector and constant shape.
+local function resolveAilmentEnergyStat(env, config)
+	if not config.ailmentTypeVar then return nil, nil end
+	local ailmentType = env.build.configTab.input[config.ailmentTypeVar] or "Freeze"
+	return ailmentType, autoDetectAilmentInfo[ailmentType]
+end
+
 -- Shared handler for PoE2 Meta gems (Cast on Critical, Cast on Elemental Ailment, Cast on Dodge,
 -- Cast on Minion Death, Cast on Melee Kill, Cast on Melee Stun, Cast on Block, Cast on Charm Use).
 -- All of these share the Energy mechanic: every spell socketed alongside the Meta gem adds to a
@@ -496,8 +504,7 @@ local function metaEnergyTriggerHandler(env, config)
 
 	-- Which per-event Energy stat applies: static per gem, except Cast on Elemental Ailment which reads
 	-- its Freeze/Shock/Ignite selector to pick one of the three constants sharing this gem.
-	local ailmentType = config.ailmentTypeVar and (env.build.configTab.input[config.ailmentTypeVar] or "Freeze")
-	local ailmentInfo = ailmentType and autoDetectAilmentInfo[ailmentType]
+	local ailmentType, ailmentInfo = resolveAilmentEnergyStat(env, config)
 	local energyPerEventStat = (ailmentInfo and ailmentInfo.energyStat) or config.energyPerEventStat
 
 	-- Qualifying events/sec: manual override if set, otherwise auto-derived from a self-cast source
@@ -695,6 +702,14 @@ local function metaInvocationTriggerHandler(env, config)
 		elseif generationInput > 0 then
 			generationRatePerSecond = generationInput * generationMult
 		end
+	elseif config.ailmentTypeVar then
+		-- Elemental Invocation: same Freeze/Shock/Ignite selector and per-event constants as Cast on
+		-- Elemental Ailment (Stage 3), just feeding this handler's discharge model instead.
+		local ailmentType, ailmentInfo = resolveAilmentEnergyStat(env, config)
+		local perEvent = (ailmentInfo and metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, ailmentInfo.energyStat)) or 0
+		local enemyPower = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "Multiplier:EnemyPower")
+		perEvent = perEvent * ((enemyPower and enemyPower > 0) and enemyPower or 1)
+		generationRatePerSecond = generationInput * perEvent * generationMult
 	end
 
 	-- The Invocation's own activation cooldown, independent of any config input.
@@ -1728,6 +1743,11 @@ local configTable = {
 		return {customHandler = metaInvocationTriggerHandler, triggerName = "Spellslinger",
 				generationRateVar = "metaSpellslingerCastsPerSecond", generationPerCastTimeStat = "MetaEnergyPerCastTimeSecond"}
 	end,
+	["supportelementalinvocationplayer"] = function()
+		return {customHandler = metaInvocationTriggerHandler, triggerName = "Elemental Invocation",
+				generationRateVar = "metaElementalInvocationEventsPerSecond",
+				ailmentTypeVar = "metaElementalInvocationAilmentType"}
+	end,
 	["snipe"] = function(env)
 		local snipeStages = m_min(env.player.modDB:Sum("BASE", nil, "Multiplier:SnipeStage"), env.player.modDB:Sum("BASE", nil, "Multiplier:SnipeStagesMax"))
 		local snipeHitMulti = env.player.mainSkill.skillModList:Sum("BASE", env.player.mainSkill.skillCfg, "snipeHitMulti")
@@ -1878,6 +1898,7 @@ local metaEnergySupportNames = {
 	["supportbarrierinvocationplayer"] = true,
 	["supportreapersinvocationplayer"] = true,
 	["supportspellslingerplayer"] = true,
+	["supportelementalinvocationplayer"] = true,
 }
 
 -- calcs.triggers(env, env.player) is currently disabled globally in CalcPerform.lua ("TURNING OFF
