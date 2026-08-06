@@ -7,9 +7,13 @@ describe("TestAilments", function()
 		-- newBuild() takes care of resetting everything in setup()
 	end)
 
-	--TODO: Bleed not supported currently
-	--it("bleed is buffed by bleed chance", function()
-	--end)
+	local function equipQuarterstaff()
+		build.itemsTab:CreateDisplayItemFromRaw([[
+			New Item
+			Razor Quarterstaff
+		]])
+		build.itemsTab:AddDisplayItem()
+	end
 
 	it("does not double count chaos damage taken for chaos poison", function()
 		build.skillsTab:PasteSocketGroup("Chaos Bolt 1/0  1\nPoison I 1/0  1\n")
@@ -199,5 +203,60 @@ describe("TestAilments", function()
 		assert.are.equals(onHit, build.calcsTab.calcsOutput.IgniteChanceOnHit)
 		assert.are.equals(onCrit, build.calcsTab.calcsOutput.IgniteChanceOnCrit)
 		assert.are.equals(dps, build.calcsTab.calcsOutput.IgniteDPS)
+	end)
+
+	-- Unlike Ignite/Shock, Bleed's chance is not damage-vs-threshold scaled at all: "Damage does not
+	-- Contribute to Bleeding chance... it cannot be inflicted without an explicit source of Bleeding chance."
+	it("increases Bleed chance on hit by an explicit chance-to-Bleed modifier", function()
+		-- Quarterstaff Strike is a weapon attack, so its per-hit ailment chance is namespaced under
+		-- MainHand (matching the "MainHand.IgniteChance"/"OffHand.IgniteChance" breakdown split already
+		-- used for weapon attacks elsewhere), unlike the top-level BleedChanceOnHit used by pure spells.
+		equipQuarterstaff()
+		build.skillsTab:PasteSocketGroup("Quarterstaff Strike 20/0  1\n")
+		runCallback("OnFrame")
+
+		local baseChance = build.calcsTab.mainOutput.MainHand.BleedChanceOnHit or 0
+
+		build.configTab.input.customMods = "20% chance to Bleed"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.near(baseChance + 20, build.calcsTab.mainOutput.MainHand.BleedChanceOnHit, 0.01)
+	end)
+
+	it("scales Bleed DPS with an increased Magnitude of Bleeding modifier", function()
+		equipQuarterstaff()
+		build.skillsTab:PasteSocketGroup("Quarterstaff Strike 20/0  1\n")
+		build.configTab.input.customMods = "100% chance to Bleed"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		local baseDPS = build.calcsTab.mainOutput.BleedDPS
+		assert.True(baseDPS and baseDPS > 0)
+
+		build.configTab.input.customMods = "100% chance to Bleed\n50% increased Magnitude of Bleeding"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.near(baseDPS * 1.5, build.calcsTab.mainOutput.BleedDPS, 0.01)
+	end)
+
+	it("doubles Bleed DPS against a moving enemy", function()
+		-- "On Monsters, Bleeding deals 100% extra Damage if the target is moving, or if the inflicted
+		-- Bleeding is Aggravated." Already modeled via the existing conditionEnemyMoving config checkbox.
+		equipQuarterstaff()
+		build.skillsTab:PasteSocketGroup("Quarterstaff Strike 20/0  1\n")
+		build.configTab.input.customMods = "100% chance to Bleed"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		local baseDPS = build.calcsTab.mainOutput.BleedDPS
+		assert.True(baseDPS and baseDPS > 0)
+
+		build.configTab.input.conditionEnemyMoving = true
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.near(baseDPS * 2, build.calcsTab.mainOutput.BleedDPS, 0.01)
 	end)
 end)
