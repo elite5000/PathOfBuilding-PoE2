@@ -2022,7 +2022,6 @@ c["20% increased Duration of Elemental Ailments on Enemies"]={{[1]={flags=0,keyw
 c["20% increased Effect of Arcane Surge on you per ten percent missing Mana"]={{[1]={flags=0,keywordFlags=0,name="ArcaneSurgeEffect",type="INC",value=20}},"  per ten percent missing Mana "}
 c["20% increased Effect of Puppet Master"]={{[1]={flags=0,keywordFlags=0,name="LocalEffect",type="INC",value=20}},"  of Puppet Master "}
 c["20% increased Effect of your Mark Skills"]={{[1]={[1]={skillType=99,type="SkillType"},flags=0,keywordFlags=0,name="LocalEffect",type="INC",value=20}},nil}
-c["20% increased Elemental Ailment Application if you have Shapeshifted to an Animal form Recently"]={{}," Elemental Ailment Application  "}
 c["20% increased Elemental Ailment Threshold"]={{[1]={flags=0,keywordFlags=0,name="AilmentThreshold",type="INC",value=20}},nil}
 c["20% increased Elemental Damage"]={{[1]={flags=0,keywordFlags=0,name="ElementalDamage",type="INC",value=20}},nil}
 c["20% increased Elemental Damage with Attacks"]={{[1]={flags=0,keywordFlags=65536,name="ElementalDamage",type="INC",value=20}},nil}
@@ -2894,7 +2893,6 @@ c["40% increased Damage with Two Handed Weapons"]={{[1]={flags=34359738372,keywo
 c["40% increased Damage with Warcries"]={{[1]={flags=0,keywordFlags=4,name="Damage",type="INC",value=40}},nil}
 c["40% increased Duration of Poisons you inflict against Slowed Enemies"]={{[1]={[1]={actor="enemy",type="ActorCondition",var="Slowed"},flags=0,keywordFlags=0,name="EnemyPoisonDuration",type="INC",value=40}},nil}
 c["40% increased Electrocute Buildup"]={{[1]={flags=0,keywordFlags=0,name="EnemyElectrocuteBuildup",type="INC",value=40}},nil}
-c["40% increased Elemental Ailment Application if you have Shapeshifted to an Animal form Recently"]={{}," Elemental Ailment Application  "}
 c["40% increased Elemental Ailment Threshold"]={{[1]={flags=0,keywordFlags=0,name="AilmentThreshold",type="INC",value=40}},nil}
 c["40% increased Elemental Damage"]={{[1]={flags=0,keywordFlags=0,name="ElementalDamage",type="INC",value=40}},nil}
 c["40% increased Elemental Damage with Attack Skills during any Flask Effect"]={{[1]={[1]={type="Condition",var="UsingFlask"},flags=0,keywordFlags=65536,name="ElementalDamage",type="INC",value=40}},nil}

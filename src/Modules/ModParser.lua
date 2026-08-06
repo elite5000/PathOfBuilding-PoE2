@@ -848,6 +848,9 @@ local modNameList = {
 	-- Other ailments
 	["chance to inflict ailments"] = "AilmentChance",
 	["chance to inflict elemental ailments"] = { "EnemyIgniteChance", "EnemyShockChance" },
+	-- Patch 0.5.0 consolidated Freeze Buildup, Shock Chance and Flammability (Ignite) Magnitude into this
+	-- single stat name; Freeze has no chance stat, so it maps to buildup instead of a (nonexistent) chance.
+	["elemental ailment application"] = { "EnemyFreezeBuildup", "EnemyShockChance", "EnemyIgniteChance" },
 	["to poison"] = "PoisonChance",
 	["to cause poison"] = "PoisonChance",
 	["to poison on hit"] = "PoisonChance",
