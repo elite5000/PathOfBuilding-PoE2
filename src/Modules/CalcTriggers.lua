@@ -420,10 +420,20 @@ end
 -- melee hits specifically (Thundergod's Wrath, Fire Spell on Melee Hit). requireSpell restricts to
 -- SkillType.Spell (and drops the Attack/Damage requirement, since "cast Spells" doesn't require a hit),
 -- for Spellslinger, which generates Energy from casting rather than hitting.
+--
+-- Source search runs in two passes. The first only considers slotMatch-compatible skills (same item
+-- slot as the Meta gem). If that finds nothing and the Meta gem's own group has "Include in Full DPS"
+-- ticked, a second pass widens the search to every other Full-DPS-ticked group on the build (excluding
+-- the Meta gem's own group, already covered by pass one) - this is how a source in a different slot
+-- (e.g. a weapon attack when the Meta gem is granted by an amulet) gets found: opting both groups into
+-- Full DPS tells PoB they act together. Groups tied to the currently inactive weapon-swap set never
+-- reach either pass since they're excluded from actor.activeSkillList entirely (CalcSetup.lua's
+-- slotEnabled check). Same-slot results always win over Full-DPS ones when both exist, matching this
+-- function's existing "more specific scope wins" precedence (manual override beats auto-detect).
 local function findAutoEnergySource(env, actor, mainSkill, requireMelee, requireSpell)
 	local bestSkill, bestUuid, bestRate
-	for _, skill in ipairs(actor.activeSkillList) do
-		if skill ~= mainSkill and slotMatch(env, skill)
+	local function considerSkill(skill)
+		if skill ~= mainSkill
 			and (requireSpell and skill.skillTypes[SkillType.Spell] or (not requireSpell and (skill.skillTypes[SkillType.Attack] or skill.skillTypes[SkillType.Damage])))
 			and (not requireMelee or skill.skillTypes[SkillType.Melee])
 			and not skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
@@ -435,6 +445,18 @@ local function findAutoEnergySource(env, actor, mainSkill, requireMelee, require
 			local rate = cached and (cached.HitSpeed or cached.Speed)
 			if rate and (not bestRate or rate > bestRate) then
 				bestSkill, bestUuid, bestRate = skill, uuid, rate
+			end
+		end
+	end
+	for _, skill in ipairs(actor.activeSkillList) do
+		if slotMatch(env, skill) then
+			considerSkill(skill)
+		end
+	end
+	if not bestSkill and mainSkill.socketGroup and mainSkill.socketGroup.includeInFullDPS then
+		for _, skill in ipairs(actor.activeSkillList) do
+			if skill.socketGroup and skill.socketGroup.includeInFullDPS and skill.socketGroup ~= mainSkill.socketGroup then
+				considerSkill(skill)
 			end
 		end
 	end

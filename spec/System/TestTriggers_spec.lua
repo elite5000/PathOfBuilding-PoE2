@@ -40,6 +40,100 @@ describe("TestTriggers", function()
 		assert.near(300, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
 	end)
 
+	it("finds a same-slot self-cast crit source for an item-granted Cast on Critical", function()
+		-- findAutoEnergySource (CalcTriggers.lua) only searches slotMatch-compatible skills, so a self-cast
+		-- Attack/Damage skill sharing the Meta gem's item slot should still be picked up as the crit-rate
+		-- source even when the Meta gem itself is item-granted (see previous test). A source in a DIFFERENT
+		-- slot (e.g. a weapon attack when the Meta gem is granted by an amulet) needs the Full DPS fallback
+		-- below, or the Configuration tab's manual "Critical hits/sec (override)" input.
+		-- A weapon must be equipped for Quarterstaff Strike to have non-zero crit chance.
+		build.itemsTab:CreateDisplayItemFromRaw([[
+			New Item
+			Razor Quarterstaff
+		]])
+		build.itemsTab:AddDisplayItem()
+		build.itemsTab:CreateDisplayItemFromRaw("New Item\nAbsent Amulet\nImplicits: 1\nGrants Skill: Level 20 Cast on Critical\n")
+		build.itemsTab:AddDisplayItem()
+		build.skillsTab:PasteSocketGroup("Slot: Amulet\nComet 20/0  1\nQuarterstaff Strike 20/0  1\n")
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Comet", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.is_true(build.calcsTab.mainOutput.MetaEnergyMax > 0)
+		assert.is_true((build.calcsTab.mainOutput.MetaEnergyEventsPerSecond or 0) > 0)
+		assert.is_not_nil(build.calcsTab.mainOutput.MetaEnergyPerEvent)
+		assert.is_true(build.calcsTab.mainOutput.MetaEnergyPerEvent > 0)
+	end)
+
+	local function equipQuarterstaffAndAmulet()
+		build.itemsTab:CreateDisplayItemFromRaw([[
+			New Item
+			Razor Quarterstaff
+		]])
+		build.itemsTab:AddDisplayItem()
+		build.itemsTab:CreateDisplayItemFromRaw("New Item\nAbsent Amulet\nImplicits: 1\nGrants Skill: Level 20 Cast on Critical\n")
+		build.itemsTab:AddDisplayItem()
+	end
+
+	it("does not find a cross-slot crit source when neither group opts into Full DPS", function()
+		-- Matches the real reported symptom: the crit source (a weapon attack) and the Meta gem's payload
+		-- (an amulet-granted Cast on Critical) live in different item slots, and neither group has
+		-- "Include in Full DPS" ticked, so auto-detection intentionally finds nothing.
+		equipQuarterstaffAndAmulet()
+		build.skillsTab:PasteSocketGroup("Slot: Amulet\nComet 20/0  1\n")
+		local cometGroupIndex = #build.skillsTab.socketGroupList
+		build.skillsTab:PasteSocketGroup("Slot: Weapon 1\nQuarterstaff Strike 20/0  1\n")
+		build.mainSocketGroup = cometGroupIndex
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Comet", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.is_nil(build.calcsTab.mainOutput.MetaEnergyPerEvent)
+	end)
+
+	it("finds a cross-slot self-cast crit source when both groups opt into Full DPS", function()
+		-- Same setup as above, but both the Meta gem's own group (Amulet) and the candidate source's group
+		-- (Weapon 1) have "Include in Full DPS" ticked - findAutoEnergySource's fallback pass should now
+		-- pick up Quarterstaff Strike despite the slot mismatch.
+		equipQuarterstaffAndAmulet()
+		build.skillsTab:PasteSocketGroup("Slot: Amulet\nComet 20/0  1\n")
+		local cometGroupIndex = #build.skillsTab.socketGroupList
+		build.skillsTab:PasteSocketGroup("Slot: Weapon 1\nQuarterstaff Strike 20/0  1\n")
+		build.mainSocketGroup = cometGroupIndex
+		for _, group in ipairs(build.skillsTab.socketGroupList) do
+			if group.slot == "Amulet" or group.slot == "Weapon 1" then
+				group.includeInFullDPS = true
+			end
+		end
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Comet", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.is_true((build.calcsTab.mainOutput.MetaEnergyEventsPerSecond or 0) > 0)
+		assert.is_not_nil(build.calcsTab.mainOutput.MetaEnergyPerEvent)
+		assert.is_true(build.calcsTab.mainOutput.MetaEnergyPerEvent > 0)
+	end)
+
+	it("does not widen the source search unless the Meta gem's own group opts into Full DPS", function()
+		-- The fallback is gated on mainSkill.socketGroup.includeInFullDPS, not just the candidate's -
+		-- ticking Full DPS on the weapon group alone should not be enough to activate it.
+		equipQuarterstaffAndAmulet()
+		build.skillsTab:PasteSocketGroup("Slot: Amulet\nComet 20/0  1\n")
+		local cometGroupIndex = #build.skillsTab.socketGroupList
+		build.skillsTab:PasteSocketGroup("Slot: Weapon 1\nQuarterstaff Strike 20/0  1\n")
+		build.mainSocketGroup = cometGroupIndex
+		for _, group in ipairs(build.skillsTab.socketGroupList) do
+			if group.slot == "Weapon 1" then
+				group.includeInFullDPS = true
+			end
+		end
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Comet", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.is_nil(build.calcsTab.mainOutput.MetaEnergyPerEvent)
+	end)
+
 	it("derives Cast on Block's trigger rate from the manual block-rate config input", function()
 		-- Comet alone: Maximum Energy = 300. Cast on Block generates 25 Energy per block.
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Block 1/0  1")

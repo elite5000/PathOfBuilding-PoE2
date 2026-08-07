@@ -1216,6 +1216,35 @@ describe("TestSkills", function()
 		assert.True(build.calcsTab.mainEnv.enemyDB:Flag(nil, "Condition:HasExposure"))
 	end)
 
+	it("syncs Include in Full DPS across every group in the same item slot when toggled via the checkbox", function()
+		-- Multiple socket groups can share one item slot (e.g. a weapon with several linked gem clusters).
+		-- Ticking "Include in Full DPS" on one should tick it for all of them - the whole point of the flag
+		-- is "this slot's skills act together", so per-group toggling within one slot is just friction.
+		-- Groups in a DIFFERENT slot (or no slot at all) must not be affected.
+		build.skillsTab:PasteSocketGroup("Slot: Weapon 1\nFireball 20/0  1\n")
+		local weapon1GroupA = build.skillsTab.socketGroupList[#build.skillsTab.socketGroupList]
+		build.skillsTab:PasteSocketGroup("Slot: Weapon 1\nSpark 20/0  1\n")
+		local weapon1GroupB = build.skillsTab.socketGroupList[#build.skillsTab.socketGroupList]
+		build.skillsTab:PasteSocketGroup("Slot: Amulet\nComet 20/0  1\n")
+		local amuletGroup = build.skillsTab.socketGroupList[#build.skillsTab.socketGroupList]
+		build.skillsTab:PasteSocketGroup("Frost Wall 20/0  1\n")
+		local unslottedGroup = build.skillsTab.socketGroupList[#build.skillsTab.socketGroupList]
+
+		build.skillsTab:SetDisplayGroup(weapon1GroupA)
+		build.skillsTab.controls.includeInFullDPS.changeFunc(true)
+
+		assert.is_true(weapon1GroupA.includeInFullDPS)
+		assert.is_true(weapon1GroupB.includeInFullDPS)
+		assert.is_falsy(amuletGroup.includeInFullDPS)
+		assert.is_falsy(unslottedGroup.includeInFullDPS)
+
+		build.skillsTab:SetDisplayGroup(weapon1GroupB)
+		build.skillsTab.controls.includeInFullDPS.changeFunc(false)
+
+		assert.is_false(weapon1GroupA.includeInFullDPS)
+		assert.is_false(weapon1GroupB.includeInFullDPS)
+	end)
+
 	describe("Combo stacking", function()
 		local CHAKRA_MOD = "Skills deal 8% increased Damage per Combo consumed, up to 40%"
 

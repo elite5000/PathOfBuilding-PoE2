@@ -212,6 +212,17 @@ local SkillsTabClass = newClass("SkillsTab", "UndoHandler", "ControlHost", "Cont
 	end
 	self.controls.includeInFullDPS = new("CheckBoxControl", { "LEFT", self.controls.groupEnabled, "RIGHT" }, { 145, 0, 20 }, "Include in Full DPS:", function(state)
 		self.displayGroup.includeInFullDPS = state
+		-- Every group socketed in the same item slot is part of the same "item", so keep them in sync -
+		-- this is what lets the Meta-Energy auto-detect fallback (CalcTriggers.lua's findAutoEnergySource)
+		-- span multiple slots (e.g. an amulet-granted Meta gem and the weapon attack generating its
+		-- Energy) with one click per item rather than one click per group.
+		if self.displayGroup.slot then
+			for _, group in ipairs(self.socketGroupList) do
+				if group ~= self.displayGroup and group.slot == self.displayGroup.slot then
+					group.includeInFullDPS = state
+				end
+			end
+		end
 		self:AddUndoState()
 		self.build.buildFlag = true
 	end)
