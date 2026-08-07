@@ -583,7 +583,14 @@ local function metaEnergyTriggerHandler(env, config)
 		return
 	end
 
-	local eventsToTrigger = m_ceil(energyMax / energyPerEvent)
+	-- "X% chance for Trigger skills to refund half of Energy Spent" means the pool doesn't fully reset to
+	-- zero after firing - on average, refundMult's worth of the pool is retained, so only effectiveEnergyMax
+	-- worth of new Energy (from qualifying events) is needed to reach the next trigger.
+	local refundChance = m_min(100, metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyRefundChance"))
+	local refundMult = 1 - refundChance / 200
+	local effectiveEnergyMax = energyMax * refundMult
+
+	local eventsToTrigger = m_ceil(effectiveEnergyMax / energyPerEvent)
 	local energyLimitedRate = eventsPerSecond / eventsToTrigger
 	local cooldownCap = mainSkillCooldownRate(mainSkill)
 	local triggerRate = m_min(energyLimitedRate, cooldownCap)
@@ -598,11 +605,21 @@ local function metaEnergyTriggerHandler(env, config)
 	output.MetaEnergyTriggerRate = triggerRate
 
 	if breakdown then
-		breakdown.MetaEnergyEventsToTrigger = {
-			s_format("%.1f ^8(Maximum Energy)", energyMax),
-			s_format("/ %.2f ^8(Energy per qualifying event)", energyPerEvent),
-			s_format("= %.2f, rounded up to %d ^8(qualifying events needed per trigger)", energyMax / energyPerEvent, eventsToTrigger),
-		}
+		if refundMult ~= 1 then
+			breakdown.MetaEnergyEventsToTrigger = {
+				s_format("%.1f ^8(Maximum Energy)", energyMax),
+				s_format("x %.3f ^8(chance-weighted Energy refund)", refundMult),
+				s_format("= %.2f ^8(effective Energy needed per trigger)", effectiveEnergyMax),
+				s_format("/ %.2f ^8(Energy per qualifying event)", energyPerEvent),
+				s_format("= %.2f, rounded up to %d ^8(qualifying events needed per trigger)", effectiveEnergyMax / energyPerEvent, eventsToTrigger),
+			}
+		else
+			breakdown.MetaEnergyEventsToTrigger = {
+				s_format("%.1f ^8(Maximum Energy)", energyMax),
+				s_format("/ %.2f ^8(Energy per qualifying event)", energyPerEvent),
+				s_format("= %.2f, rounded up to %d ^8(qualifying events needed per trigger)", energyMax / energyPerEvent, eventsToTrigger),
+			}
+		end
 		breakdown.EffectiveSourceRate = {
 			s_format("%.2f ^8(qualifying events per second%s)", eventsPerSecond, breakdown.MetaEnergyEventsPerSecond and ", auto-derived (see above)" or ", from Configuration tab"),
 			s_format("/ %d ^8(qualifying events needed per trigger)", eventsToTrigger),
@@ -672,8 +689,13 @@ local function metaInvocationTriggerHandler(env, config)
 	-- rate. The mod is tagged Condition:InvocationSkill (matching "Invocated Spells deal/have..." mods
 	-- elsewhere), which nothing in the calc engine sets automatically for SkillType.Invocation skills - use
 	-- a config-scoped copy so it reads true here without mutating the Invocation's real skillCfg/mod list.
+	-- "Invocated Spells have..." mods (as opposed to "Invocated skills have...") are additionally tagged
+	-- keywordFlags=Spell by the "invocated spells have" prefix (ModParser.lua), since those mods are meant to
+	-- apply within a Spell's own calculation context - add that bit here too so Sum()'s MatchKeywordFlags
+	-- check doesn't reject them when read via the Invocation skill's own (non-Spell-tagged) cfg.
 	local invocationCfg = copyTable(metaSkill.skillCfg, true)
 	invocationCfg.skillCond = setmetatable({ InvocationSkill = true }, { __index = metaSkill.skillCfg.skillCond })
+	invocationCfg.keywordFlags = bor(metaSkill.skillCfg.keywordFlags, KeywordFlag.Spell)
 	local energyMaxBase = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyMax")
 	local energyMaxMult = calcLib.mod(metaSkill.skillModList, invocationCfg, "MetaEnergyMaxIncrease")
 	local energyMax = energyMaxBase * energyMaxMult
@@ -688,6 +710,24 @@ local function metaInvocationTriggerHandler(env, config)
 		else
 			t_insert(breakdown.MetaEnergyMax, s_format("= %.1f ^8Energy cost of one discharge (fixed Maximum Energy: %.1f)", totalSocketedSpellCost, energyMax))
 		end
+	end
+
+	-- "X% chance for Trigger skills to refund half of Energy Spent" (generic, from either Meta or Invocation
+	-- sources) and "Invocated Spells have X% chance to consume half as much Energy" (Invocation-only, reads
+	-- the same Condition:InvocationSkill-scoped invocationCfg as MetaEnergyMaxIncrease above) both reduce to
+	-- the same expected-value multiplier on the cost of one discharge; independent, so their multipliers
+	-- combine multiplicatively. energyMax (the pool cap) is unaffected - refund/discount affects spending,
+	-- not how much can be banked.
+	local refundChance = m_min(100, metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyRefundChance"))
+	local discountChance = m_min(100, metaSkill.skillModList:Sum("BASE", invocationCfg, "MetaEnergyDischargeCostReduceChance"))
+	local refundDiscountMult = (1 - refundChance / 200) * (1 - discountChance / 200)
+	local effectiveDischargeCost = totalSocketedSpellCost * refundDiscountMult
+	if breakdown and refundDiscountMult ~= 1 then
+		breakdown.MetaEnergyDischargeCost = {
+			s_format("%.1f ^8(Energy cost of one discharge)", totalSocketedSpellCost),
+			s_format("x %.3f ^8(chance-weighted Energy refund/discount)", refundDiscountMult),
+			s_format("= %.2f ^8(effective Energy cost per discharge)", effectiveDischargeCost),
+		}
 	end
 
 	-- Generation rate: manual input (config.generationRateVar), converted to Energy/sec one of three ways
@@ -764,7 +804,7 @@ local function metaInvocationTriggerHandler(env, config)
 		return
 	end
 
-	local generationLimitedRate = generationRatePerSecond / totalSocketedSpellCost
+	local generationLimitedRate = generationRatePerSecond / effectiveDischargeCost
 
 	-- A single Invocation activation can chain multiple discharges at once if Energy has banked up faster
 	-- than the cooldown drains it ("triggers spells... a number of times based on the amount of energy
@@ -775,7 +815,7 @@ local function metaInvocationTriggerHandler(env, config)
 	local dischargesPerActivation = 0
 	if cooldown > 0 then
 		local energyPerActivation = m_min(generationRatePerSecond * cooldown, energyMax)
-		dischargesPerActivation = m_floor(energyPerActivation / totalSocketedSpellCost)
+		dischargesPerActivation = m_floor(energyPerActivation / effectiveDischargeCost)
 		if dischargesPerActivation >= 1 then
 			burstRate = cooldownRate * dischargesPerActivation
 		end

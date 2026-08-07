@@ -376,11 +376,12 @@ describe("TestTriggers", function()
 		assert.near(650, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
 	end)
 
-	it("parses Energy refund/discount chance mods cleanly instead of silently mismapping them onto generation", function()
-		-- These aren't modeled as an actual mechanic yet (no expected-value refund/discount applied to
-		-- Energy consumption), but they must not silently inflate MetaEnergyGeneration either, since
-		-- calcLib.mod only reads INC/MORE and these parse as BASE - previously a no-op dressed up as a
-		-- real modifier. Verified here as a clean parse with no change to the resulting trigger rate.
+	it("reduces Invocation's effective discharge cost via Energy refund/discount chance mods", function()
+		-- Both mods reduce to the same expected-value multiplier on the cost of one discharge:
+		-- (1 - chance/200). 20% refund -> 0.9, 40% discount -> 0.8, combined (independent) -> 0.72.
+		-- At 2 kills/sec (60 Energy/sec generated, 300 Energy/discharge), generationLimitedRate is the sole
+		-- binding constraint both before and after (dischargesPerActivation rounds to 0 either way, so
+		-- burstRate stays non-binding) - so the trigger rate should scale by exactly 1/0.72.
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
 		build.mainSocketGroup = 1
 		build.configTab.input.enemyIsBoss = "None"
@@ -395,7 +396,23 @@ describe("TestTriggers", function()
 		runCallback("OnFrame")
 		build.calcsTab:BuildOutput()
 
-		assert.near(baseRate, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(baseRate / 0.72, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("reduces the auto-fire Meta gems' effective Energy-to-trigger via the refund chance mod", function()
+		-- Comet (300 Energy) + Cast on Block, 25 Energy/block, 5 blocks/sec: base eventsToTrigger =
+		-- ceil(300/25) = 12, triggerRate = 5/12. A 20% refund chance -> refundMult = 0.9 ->
+		-- effectiveEnergyMax = 270 -> eventsToTrigger = ceil(270/25) = 11 -> triggerRate = 5/11.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Block 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaBlockEventsPerSecond = 5
+		build.configTab.input.customMods = "20% chance for Trigger skills to refund half of Energy Spent"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals(11, build.calcsTab.mainOutput.MetaEnergyEventsToTrigger)
+		assert.near(5 / 11, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("shows Spellslinger's fixed Maximum Energy even before its generation rate is set", function()

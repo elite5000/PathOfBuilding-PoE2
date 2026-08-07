@@ -240,12 +240,15 @@ local modNameList = {
 	-- "Invocated skills have X% increased Maximum Energy" scales the fixed Energy pool, not generation.
 	["maximum energy"] = "MetaEnergyMaxIncrease",
 	-- Probabilistic Energy-refund/discount mods ("chance to consume half as much Energy", "chance to
-	-- refund half of Energy Spent") aren't modeled yet - explicitly recognized as no-ops (matching the
-	-- ["on enemies"]/["while active"] convention elsewhere in this file) so they don't fall through to the
-	-- bare "energy" catch-all and get silently miscounted as generation, which has no effect anyway since
-	-- these are BASE-type modifiers and calcLib.mod only reads INC/MORE.
-	["to consume half as much energy"] = { },
-	["for trigger skills to refund half of energy spent"] = { },
+	-- refund half of Energy Spent"). Both parse as BASE (the "chance" form doesn't set a mod type), summed
+	-- like every other Chance stat (BleedChance, EvadeChance, ...) rather than read via calcLib.mod, and are
+	-- modeled in CalcTriggers.lua as a steady-state expected-value cost reduction: E[cost] = cost*(1 -
+	-- chance/200), the same formula whether the chance is a post-spend refund or a pre-spend discount.
+	-- "consume half as much Energy" is Invocation-only per its own wording (gated by Condition:InvocationSkill
+	-- via the "invocated spells have" prefix above); "refund half of Energy Spent" says generic "Trigger
+	-- skills" and applies to both auto-fire Meta gems and Invocation.
+	["to consume half as much energy"] = "MetaEnergyDischargeCostReduceChance",
+	["for trigger skills to refund half of energy spent"] = "MetaEnergyRefundChance",
 	["energy"] = "MetaEnergyGeneration",
 	-- Primary defences
 	["maximum energy shield"] = "EnergyShield",

@@ -1420,7 +1420,7 @@ c["119% increased Spell Damage"]={{[1]={flags=2,keywordFlags=0,name="Damage",typ
 c["12 Life Regeneration per second"]={{[1]={flags=0,keywordFlags=0,name="LifeRegen",type="BASE",value=12}},nil}
 c["12 Life Regeneration per second per Socket filled"]={{[1]={[1]={type="Multiplier",var="RunesSocketedIn{SlotName}"},flags=0,keywordFlags=0,name="LifeRegen",type="BASE",value=12}},nil}
 c["12% chance for Spell Skills to fire 2 additional Projectiles"]={{[1]={flags=2,keywordFlags=0,name="TwoAdditionalProjectilesChance",type="BASE",value=12}},nil}
-c["12% chance for Trigger skills to refund half of Energy Spent"]={{},nil}
+c["12% chance for Trigger skills to refund half of Energy Spent"]={{[1]={flags=0,keywordFlags=0,name="MetaEnergyRefundChance",type="BASE",value=12}},nil}
 c["12% chance to Blind Enemies on Hit"]={{[1]={flags=0,keywordFlags=0,name="BlindChance",type="BASE",value=12}},nil}
 c["12% chance when collecting an Elemental Infusion to gain an"]={{}," when collecting an Elemental Infusion to gain an "}
 c["12% faster start of Energy Shield Recharge"]={{[1]={flags=0,keywordFlags=0,name="EnergyShieldRechargeFaster",type="INC",value=12}},nil}
@@ -2253,7 +2253,7 @@ c["25% chance for Attacks to Maim on Hit against Poisoned Enemies 25% increased 
 c["25% chance for Lightning Damage with Hits to be Lucky"]={{[1]={flags=0,keywordFlags=0,name="LightningLuckyHitsChance",type="BASE",value=25}},nil}
 c["25% chance for Projectiles to Pierce Enemies within 3m distance of you"]={{[1]={flags=0,keywordFlags=0,name="ProjectileCount",type="BASE",value=25}}," for  to Pierce Enemies within 3m distance of you "}
 c["25% chance for Slam Skills you use yourself to cause an additional Aftershock"]={{}," for Slam Skills you use yourself to cause an additional Aftershock "}
-c["25% chance for Trigger skills to refund half of Energy Spent"]={{},nil}
+c["25% chance for Trigger skills to refund half of Energy Spent"]={{[1]={flags=0,keywordFlags=0,name="MetaEnergyRefundChance",type="BASE",value=25}},nil}
 c["25% chance on Consuming a Shock on an Enemy to reapply it"]={{}," on Consuming a Shock on an Enemy to reapply it "}
 c["25% chance on Shocking Enemies to created Shocked Ground"]={{[1]={[1]={actor="enemy",type="ActorCondition",var="OnShockedGround"},flags=0,keywordFlags=0,name="ShockBase",type="BASE",value=20}},nil}
 c["25% chance that when Volatility on you explodes, you regain an equivalent amount of Volatility"]={{}," that when Volatility on you explodes, you regain an equivalent amount of Volatility "}
@@ -6029,7 +6029,7 @@ c["Instant Recovery"]={{[1]={flags=0,keywordFlags=0,name="FlaskInstantRecovery",
 c["Invocated Spells deal 15% increased Damage"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=131072,name="Damage",type="INC",value=15}},nil}
 c["Invocated Spells have 12% increased Critical Hit Chance"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=131072,name="CritChance",type="INC",value=12}},nil}
 c["Invocated Spells have 30% increased Critical Hit Chance"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=131072,name="CritChance",type="INC",value=30}},nil}
-c["Invocated Spells have 40% chance to consume half as much Energy"]={{},nil}
+c["Invocated Spells have 40% chance to consume half as much Energy"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=131072,name="MetaEnergyDischargeCostReduceChance",type="BASE",value=40}},nil}
 c["Invocated skills have 30% increased Maximum Energy"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=0,name="MetaEnergyMaxIncrease",type="INC",value=30}},nil}
 c["Invocation Skills cannot gain Energy while Triggering Spells"]={nil,"Invocation Skills cannot gain Energy while Triggering Spells "}
 c["Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy"]={nil,"Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy "}
