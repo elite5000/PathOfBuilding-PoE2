@@ -57,8 +57,26 @@ describe("TestTriggers", function()
 
 		assert.are.equals("Eye of Winter", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
 		assert.near(10, build.calcsTab.mainEnv.player.mainSkill.skillData.cooldown, 0.01)
-		assert.near(0.1, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
-		assert.near(0.1, build.calcsTab.mainOutput.Speed, 0.0001)
+		-- calcSkillCooldown rounds up to the nearest 33ms server tick: 10s -> 304 ticks -> 10.032s.
+		assert.near(1 / 10.032, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(1 / 10.032, build.calcsTab.mainOutput.Speed, 0.0001)
+	end)
+
+	it("reduces the displayed spell's own cooldown cap via Temporalis's flat Cooldown Recovery mod", function()
+		-- Same Eye of Winter setup as above, but with Temporalis's "Skills have -2 seconds to Cooldown"
+		-- (CooldownRecoveryFromTemporalis): 10s - 2s = 8s, then rounded up to the nearest 33ms server tick
+		-- (243 ticks -> 8.019s). The old manual cooldown reconstruction in mainSkillCooldownRate never read
+		-- this mod (or tick-rounded) at all, so it would have silently stayed at 1/10 - this confirms
+		-- mainSkillCooldownRate now goes through the shared calcSkillCooldown helper.
+		build.skillsTab:PasteSocketGroup("Eye of Winter 20/0  1\nCast on Block 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaBlockEventsPerSecond = 1000
+		build.configTab.input.customMods = "Skills have -2 seconds to Cooldown"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(1 / 8.019, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("does not cap Cast on Block's trigger rate when the displayed spell has no cooldown of its own", function()
@@ -86,10 +104,10 @@ describe("TestTriggers", function()
 		build.calcsTab:BuildOutput()
 
 		assert.are.equals("Eye of Winter", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
-		-- Even though 1000 kills/sec would otherwise make Reaper's Invocation's own 0.2s cooldown (5/sec)
-		-- the binding constraint (per the existing "caps...by its own cooldown" test), Eye of Winter's much
-		-- slower 10s cooldown (0.1/sec) is now the tightest constraint of the three.
-		assert.near(0.1, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		-- Even though 1000 kills/sec would otherwise make Reaper's Invocation's own 0.2s cooldown the
+		-- binding constraint (per the existing "caps...by its own cooldown" test), Eye of Winter's much
+		-- slower 10s cooldown (tick-rounded to 10.032s) is now the tightest constraint of the three.
+		assert.near(1 / 10.032, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	local function equipQuarterstaff()
@@ -305,7 +323,8 @@ describe("TestTriggers", function()
 
 	it("caps Barrier Invocation's discharge rate by its own cooldown when generation is abundant", function()
 		-- At 100000 ES damage taken/sec (/10 = 10000 Energy/sec), the Energy-limited rate (10000/300 =
-		-- 33.3/sec) exceeds the 0.2s-cooldown cap, so the cooldown (5/sec) is the binding constraint.
+		-- 33.3/sec) exceeds the 0.2s-cooldown cap, so the cooldown is the binding constraint - tick-rounded
+		-- to the nearest 33ms server tick (7 ticks -> 0.231s, ~4.329/sec), not exactly 0.2s/5/sec.
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nBarrier Invocation 1/0  1")
 		build.mainSocketGroup = 1
 		build.configTab.input.metaBarrierInvocationESDamageTakenPerSecond = 100000
@@ -313,7 +332,7 @@ describe("TestTriggers", function()
 		runCallback("OnFrame")
 		build.calcsTab:BuildOutput()
 
-		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(1 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("caps Reaper's Invocation's discharge rate by Energy generation when generation is the bottleneck", function()
@@ -332,7 +351,7 @@ describe("TestTriggers", function()
 
 	it("caps Reaper's Invocation's discharge rate by its own cooldown when generation is abundant", function()
 		-- 1000 kills/sec -> 30000 Energy/sec; Energy-limited rate (30000/300 = 100/sec) exceeds the
-		-- 0.2s-cooldown cap, so the cooldown (5/sec) is the binding constraint.
+		-- 0.2s-cooldown cap, so the cooldown is the binding constraint - tick-rounded to 0.231s (~4.329/sec).
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
 		build.mainSocketGroup = 1
 		build.configTab.input.enemyIsBoss = "None"
@@ -341,15 +360,16 @@ describe("TestTriggers", function()
 		runCallback("OnFrame")
 		build.calcsTab:BuildOutput()
 
-		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(1 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("chains multiple discharges per activation when Energy banks up faster than the cooldown drains it", function()
 		-- Spark costs only 70 Energy per discharge (vs Comet's 300 in the tests above). At 1000 kills/sec
-		-- (30000 Energy/sec) and a 0.2s cooldown, up to 30000*0.2 = 6000 Energy could bank between
-		-- activations, capped at the fixed 500 Maximum Energy pool. floor(500/70) = 7 discharges fit in that
-		-- cap, so one activation (5/sec) chains 7 discharges: 5*7 = 35/sec - not just 5/sec, which is what a
-		-- one-discharge-per-activation model (the old formula) would have reported.
+		-- (30000 Energy/sec) and a 0.2s cooldown (tick-rounded to 0.231s, ~4.329/sec), up to 30000*0.231 =
+		-- 6930 Energy could bank between activations, capped at the fixed 500 Maximum Energy pool.
+		-- floor(500/70) = 7 discharges fit in that cap, so one activation chains 7 discharges:
+		-- (1/0.231)*7 = ~30.303/sec - not just ~4.329/sec, which is what a one-discharge-per-activation
+		-- model (the old formula) would have reported.
 		build.skillsTab:PasteSocketGroup("Spark 20/0  1\nReaper's Invocation 1/0  1")
 		build.mainSocketGroup = 1
 		build.configTab.input.enemyIsBoss = "None"
@@ -358,7 +378,26 @@ describe("TestTriggers", function()
 		runCallback("OnFrame")
 		build.calcsTab:BuildOutput()
 
-		assert.near(35, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(7 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("reduces Invocation's own activation cooldown via Temporalis's flat Cooldown Recovery mod", function()
+		-- Comet + Reaper's Invocation (0.2s cooldown), 1000 kills/sec (generation and Energy-limited rate
+		-- both comfortably non-binding, floor(500/300)=1 discharge per activation). Temporalis's "Skills
+		-- have -2 seconds to Cooldown" pushes 0.2s - 2s deep negative, clamped to the 0.1s minimum, then
+		-- tick-rounded up to the nearest 33ms server tick (4 ticks -> 0.132s, ~7.576/sec) - not the
+		-- 1/0.2 = 5/sec the old manual reconstruction (which never read CooldownRecoveryFromTemporalis or
+		-- tick-rounded at all) would have silently reported.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab.input.customMods = "Skills have -2 seconds to Cooldown"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(1 / 0.132, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("scales Invocation's fixed Maximum Energy by an explicit increased-Maximum-Energy modifier", function()
@@ -418,14 +457,16 @@ describe("TestTriggers", function()
 
 	it("averages discrete per-discharge outcomes for Invocation's chained-burst count, rather than flooring the expected cost", function()
 		-- Comet (300 Energy) + Reaper's Invocation, 1000 kills/sec (30000 Energy/sec, same as the "chains
-		-- multiple discharges" test above), 0.2s cooldown -> energyPerActivation caps at the 500 Maximum
-		-- Energy pool. With a 40% chance to consume half as much Energy (discount only, no refund):
-		-- naively, floor(500 / (300*0.8)) = floor(500/240) = 2 discharges - but that ignores that an early
-		-- discharge without the discount consumes the full 300, which can block a would-be-affordable later
-		-- discharge. The exact expected count (hand-verified via the same quarters-DP the implementation
-		-- uses: quarterCost=75, maxQuarters=6, pFull=0.6, pHalf=0.4, pBoth=0) is 1.704, not 2.
-		-- burstRate = cooldownRate(5) * 1.704 = 8.52, which binds below generationLimitedRate (30000/240=125)
-		-- and Comet's own (nonexistent) cooldown cap.
+		-- multiple discharges" test above), 0.2s cooldown (tick-rounded to 0.231s) -> energyPerActivation
+		-- (30000*0.231 = 6930, capped at 500) still caps at the 500 Maximum Energy pool either way. With a
+		-- 40% chance to consume half as much Energy (discount only, no refund): naively,
+		-- floor(500 / (300*0.8)) = floor(500/240) = 2 discharges - but that ignores that an early discharge
+		-- without the discount consumes the full 300, which can block a would-be-affordable later discharge.
+		-- The exact expected count (hand-verified via the same quarters-DP the implementation uses:
+		-- quarterCost=75, maxQuarters=6, pFull=0.6, pHalf=0.4, pBoth=0) is 1.704, not 2 - unaffected by the
+		-- cooldown tick-rounding, since energyPerActivation is still capped at energyMax=500 either way.
+		-- burstRate = cooldownRate(1/0.231) * 1.704 = ~7.377, which binds below generationLimitedRate
+		-- (30000/240=125) and Comet's own (nonexistent) cooldown cap.
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
 		build.mainSocketGroup = 1
 		build.configTab.input.enemyIsBoss = "None"
@@ -435,7 +476,7 @@ describe("TestTriggers", function()
 		runCallback("OnFrame")
 		build.calcsTab:BuildOutput()
 
-		assert.near(8.52, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(1.704 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("reports Invocation as untriggered when the socketed payload costs more than the Maximum Energy pool can ever hold", function()
@@ -501,7 +542,7 @@ describe("TestTriggers", function()
 
 	it("caps Spellslinger's discharge rate by its own cooldown when generation is abundant", function()
 		-- At 100000 Energy/sec generated, the Energy-limited rate (100000/300 = 333/sec) exceeds the
-		-- 0.2s-cooldown cap, so the cooldown (5/sec) is the binding constraint.
+		-- 0.2s-cooldown cap, so the cooldown is the binding constraint - tick-rounded to 0.231s (~4.329/sec).
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nSpellslinger 1/0  1")
 		build.mainSocketGroup = 1
 		build.configTab.input.metaSpellslingerCastsPerSecond = 100000
@@ -509,7 +550,7 @@ describe("TestTriggers", function()
 		runCallback("OnFrame")
 		build.calcsTab:BuildOutput()
 
-		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(1 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("shows Elemental Invocation's fixed Maximum Energy even before its generation rate is set", function()
@@ -540,7 +581,7 @@ describe("TestTriggers", function()
 
 	it("caps Elemental Invocation's discharge rate by its own cooldown when generation is abundant", function()
 		-- 1000 freezes/sec -> 10000 Energy/sec; Energy-limited rate (10000/300 = 33.3/sec) exceeds the
-		-- 0.2s-cooldown cap, so the cooldown (5/sec) is the binding constraint.
+		-- 0.2s-cooldown cap, so the cooldown is the binding constraint - tick-rounded to 0.231s (~4.329/sec).
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nElemental Invocation 1/0  1")
 		build.mainSocketGroup = 1
 		build.configTab.input.enemyIsBoss = "None"
@@ -549,7 +590,7 @@ describe("TestTriggers", function()
 		runCallback("OnFrame")
 		build.calcsTab:BuildOutput()
 
-		assert.near(5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(1 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("uses Shock's Energy constant instead of Freeze's when the ailment selector is switched", function()

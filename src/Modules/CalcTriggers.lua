@@ -446,14 +446,8 @@ end
 -- (independent of the Meta/Invocation Energy mechanic - e.g. a spell with a native activation cooldown),
 -- it can't fire faster than that even when the group's Energy-based discharge-attempt rate would allow it.
 local function mainSkillCooldownRate(mainSkill)
-	local cooldown = mainSkill.skillData.cooldown
-	if not cooldown or cooldown <= 0 then
-		return m_huge
-	end
-	local icdr = calcLib.mod(mainSkill.skillModList, mainSkill.skillCfg, "CooldownRecovery")
-	local addedCooldown = mainSkill.skillModList:Sum("BASE", mainSkill.skillCfg, "CooldownRecovery")
-	local adjustedCooldown = (cooldown + addedCooldown) / icdr
-	return adjustedCooldown > 0 and (1 / adjustedCooldown) or m_huge
+	local cooldown = calcSkillCooldown(mainSkill.skillModList, mainSkill.skillCfg, mainSkill.skillData)
+	return cooldown > 0 and (1 / cooldown) or m_huge
 end
 
 -- Shared handler for PoE2 Meta gems (Cast on Critical, Cast on Elemental Ailment, Cast on Dodge,
@@ -804,10 +798,11 @@ local function metaInvocationTriggerHandler(env, config)
 		generationRatePerSecond = generationInput * perEvent * generationMult
 	end
 
-	-- The Invocation's own activation cooldown, independent of any config input.
-	local baseCooldown = (metaSkill.activeEffect.grantedEffect.levels[metaSkill.activeEffect.level] or {}).cooldown or metaSkill.skillData.cooldown or 0
-	local cooldownRecoveryMod = calcLib.mod(metaSkill.skillModList, metaSkill.skillCfg, "CooldownRecovery")
-	local cooldown = (baseCooldown > 0 and cooldownRecoveryMod > 0) and (baseCooldown / cooldownRecoveryMod) or 0
+	-- The Invocation's own activation cooldown, independent of any config input. Uses the same
+	-- calcSkillCooldown helper every other skill's cooldown goes through (CalcOffence.lua) instead of
+	-- reconstructing it manually, so it picks up cooldown overrides, flat CooldownRecoveryFromTemporalis
+	-- reductions (with the correct 0.1s minimum clamp), and server-tick rounding.
+	local cooldown = calcSkillCooldown(metaSkill.skillModList, metaSkill.skillCfg, metaSkill.skillData)
 	local cooldownRate = cooldown > 0 and (1 / cooldown) or m_huge
 
 	-- If not even the cheapest achievable discharge (accounting for refund/discount luck) fits in the fixed
