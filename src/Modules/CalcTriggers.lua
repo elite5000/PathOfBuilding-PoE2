@@ -423,7 +423,7 @@ end
 local function findAutoEnergySource(env, actor, mainSkill, requireMelee, requireSpell)
 	local bestSkill, bestUuid, bestRate
 	for _, skill in ipairs(actor.activeSkillList) do
-		if skill ~= mainSkill and skill.socketGroup == mainSkill.socketGroup
+		if skill ~= mainSkill and slotMatch(env, skill)
 			and (requireSpell and skill.skillTypes[SkillType.Spell] or (not requireSpell and (skill.skillTypes[SkillType.Attack] or skill.skillTypes[SkillType.Damage])))
 			and (not requireMelee or skill.skillTypes[SkillType.Melee])
 			and not skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
@@ -487,10 +487,14 @@ local function metaEnergyTriggerHandler(env, config)
 	local skillFlags = env.mode == "CALCS" and mainSkill.activeEffect.statSetCalcs.skillFlags or mainSkill.activeEffect.statSet.skillFlags
 
 	-- Find the Meta gem itself (e.g. "Cast on Critical") socketed in the same group; it carries the
-	-- Energy-generation stats (energy_generated_+%, the per-event centienergy constant(s)).
+	-- Energy-generation stats (energy_generated_+%, the per-event centienergy constant(s)). Uses slotMatch
+	-- (not a bare socketGroup comparison) so this also finds an item-granted Meta skill, which lives in its
+	-- own dedicated socket group (SkillsTab.lua) separate from wherever the payload spells are pasted, even
+	-- though both are "socketed in the same item" - the same item-slot matching the generic trigger system
+	-- already uses elsewhere in this file (Mjolner, CoC support, etc.).
 	local metaSkill
 	for _, skill in ipairs(actor.activeSkillList) do
-		if skill.socketGroup == mainSkill.socketGroup and skill.skillModList:Flag(skill.skillCfg, "MetaEnergySumSocketedSkills") then
+		if slotMatch(env, skill) and skill.skillModList:Flag(skill.skillCfg, "MetaEnergySumSocketedSkills") then
 			metaSkill = skill
 			break
 		end
@@ -510,7 +514,7 @@ local function metaEnergyTriggerHandler(env, config)
 	local spellCosts = {}
 	local costBreakdown = breakdown and {}
 	for _, skill in ipairs(actor.activeSkillList) do
-		if skill.socketGroup == mainSkill.socketGroup and skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
+		if slotMatch(env, skill) and skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
 			local costRateMs = skill.skillModList:Sum("BASE", skill.skillCfg, "MetaEnergyCostRateMs")
 			if costRateMs and costRateMs > 0 then
 				local baseTime = (skill.skillData.castTimeOverride or skill.activeEffect.grantedEffect.castTime or 0) + skill.skillModList:Sum("BASE", skill.skillCfg, "Speed")
@@ -683,10 +687,12 @@ local function metaInvocationTriggerHandler(env, config)
 	local mainSkill = actor.mainSkill
 	local skillFlags = env.mode == "CALCS" and mainSkill.activeEffect.statSetCalcs.skillFlags or mainSkill.activeEffect.statSet.skillFlags
 
-	-- Find the Invocation skill itself, carrying the fixed Maximum Energy and generation stats.
+	-- Find the Invocation skill itself, carrying the fixed Maximum Energy and generation stats. Uses
+	-- slotMatch (see the equivalent comment in metaEnergyTriggerHandler) so item-granted Invocation skills
+	-- still find their payload spells, even when those live in a separate socket group.
 	local metaSkill
 	for _, skill in ipairs(actor.activeSkillList) do
-		if skill.socketGroup == mainSkill.socketGroup and skill.skillModList:Sum("BASE", skill.skillCfg, "MetaEnergyMax") > 0 then
+		if slotMatch(env, skill) and skill.skillModList:Sum("BASE", skill.skillCfg, "MetaEnergyMax") > 0 then
 			metaSkill = skill
 			break
 		end
@@ -705,7 +711,7 @@ local function metaInvocationTriggerHandler(env, config)
 	local totalSocketedSpellCost = 0
 	local costBreakdown = breakdown and {}
 	for _, skill in ipairs(actor.activeSkillList) do
-		if skill.socketGroup == mainSkill.socketGroup and skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
+		if slotMatch(env, skill) and skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
 			local costRateMs = skill.skillModList:Sum("BASE", skill.skillCfg, "MetaEnergyCostRateMs")
 			if costRateMs and costRateMs > 0 then
 				local baseTime = (skill.skillData.castTimeOverride or skill.activeEffect.grantedEffect.castTime or 0) + skill.skillModList:Sum("BASE", skill.skillCfg, "Speed")

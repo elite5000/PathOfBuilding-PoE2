@@ -2192,18 +2192,46 @@ for id in pairs(data.gems) do
 end
 table.sort(gems)
 local gemIdLookup = { }
+local gemDataLookup = { }
+local gemKeyLookup = { }
 for _, gem in ipairs(gems) do
 	local gemData = data.gems[gem]
 	local grantedEffect = gemData.grantedEffect
 	local gemName = grantedEffect.fromItem and grantedEffect.baseTypeName and grantedEffect.baseTypeName:lower() or gemData.name:lower()
 	gemIdLookup[gemName] = grantedEffect.id
+	gemDataLookup[gemName] = gemData
+	gemKeyLookup[gemName] = gem
 end
 local function grantedExtraSkill(name, level, noSupports)
 	name = name:gsub(" skill","")
 	if gemIdLookup[name] then
-		return {
+		local mods = {
 			mod("ExtraSkill", "LIST", { skillId = gemIdLookup[name], level = tonumber(level), noSupports = noSupports })
 		}
+		-- Some granted skills (e.g. Meta gems like Cast on Critical) have a hidden companion support gem
+		-- (gemData.additionalGrantedEffects) that's normally auto-included whenever the gem is physically
+		-- socketed (Data.lua builds this list from the gem's additionalGrantedEffectIdN fields) - an
+		-- item-granted skill needs that same companion, tagged to the item's own slot ({SlotName}, resolved
+		-- in Item.lua), so it reaches payload skills socketed in a *different* group of the same item, the
+		-- same way a physically-socketed Meta gem's hidden support already reaches skills in its own group.
+		if not noSupports then
+			local gemData = gemDataLookup[name]
+			if gemData and gemData.additionalGrantedEffects then
+				for i, additional in ipairs(gemData.additionalGrantedEffects) do
+					if additional.support then
+						-- sourceGemId: the hidden companion's own skill definition has no display color (it's
+						-- never meant to be shown on its own) and its internal name never matches a real gem base
+						-- name, so CalcSetup.lua's usual name-based gemData lookup for ExtraSupport mods fails for
+						-- it - pass the *granting* gem's own data.gems key through (not the gemData table itself,
+						-- which contains cycles that break copyTable's deep-copy) so CalcSetup.lua can look it up
+						-- fresh and give the synthesized support effect the same color/icon a physically-socketed
+						-- copy of this hidden companion would inherit.
+						t_insert(mods, mod("ExtraSupport", "LIST", { skillId = gemData["additionalGrantedEffectId"..i], level = tonumber(level), sourceGemId = gemKeyLookup[name] }, { type = "SocketedIn", slotName = "{SlotName}" }))
+					end
+				end
+			end
+		end
+		return mods
 	end
 end
 local function triggerExtraSkill(name, level, options)

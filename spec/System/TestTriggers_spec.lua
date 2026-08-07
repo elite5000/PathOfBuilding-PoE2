@@ -21,6 +21,25 @@ describe("TestTriggers", function()
 		assert.near(370, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
 	end)
 
+	it("finds a payload spell in a separate socket group when the Meta gem is item-granted", function()
+		-- An item-granted Meta skill (e.g. "Absent Amulet" granting Cast on Critical) lives in its own
+		-- dedicated special socket group (SkillsTab.lua), not the group the player pastes payload spells
+		-- into - the two are linked only by both being "socketed in" the same item slot. Root cause traced
+		-- two layers deep: (1) CalcTriggers.lua's discovery/summation loops needed slotMatch (fixed above,
+		-- verified harmless via the full existing test suite), but that alone wasn't enough because (2) the
+		-- "grants skill: X" mod only ever generated an ExtraSkill mod for the granted skill itself, never an
+		-- ExtraSupport mod for its hidden companion trigger-support (gemData.additionalGrantedEffects) - so
+		-- Comet's own effectList/triggeredBy was never populated in the first place, regardless of (1).
+		build.itemsTab:CreateDisplayItemFromRaw("New Item\nAbsent Amulet\nImplicits: 1\nGrants Skill: Level 20 Cast on Critical\n")
+		build.itemsTab:AddDisplayItem()
+		build.skillsTab:PasteSocketGroup("Slot: Amulet\nComet 20/0  1\n")
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.are.equals("Comet", build.calcsTab.mainEnv.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.near(300, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
+	end)
+
 	it("derives Cast on Block's trigger rate from the manual block-rate config input", function()
 		-- Comet alone: Maximum Energy = 300. Cast on Block generates 25 Energy per block.
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Block 1/0  1")
