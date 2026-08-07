@@ -583,14 +583,16 @@ local function metaEnergyTriggerHandler(env, config)
 		return
 	end
 
-	-- "X% chance for Trigger skills to refund half of Energy Spent" means the pool doesn't fully reset to
-	-- zero after firing - on average, refundMult's worth of the pool is retained, so only effectiveEnergyMax
-	-- worth of new Energy (from qualifying events) is needed to reach the next trigger.
+	-- "X% chance for Trigger skills to refund half of Energy Spent": each trigger either refunds half the
+	-- pool (rounding down to fewer events needed next cycle) or doesn't - two discrete, already-rounded
+	-- outcomes. The long-run average events-per-trigger is the chance-weighted average of those two rounded
+	-- outcomes (E[ceil(cost)]), not ceil of the averaged cost (ceil(E[cost])) - those aren't the same number,
+	-- since rounding doesn't commute with averaging.
 	local refundChance = m_min(100, metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyRefundChance"))
-	local refundMult = 1 - refundChance / 200
-	local effectiveEnergyMax = energyMax * refundMult
-
-	local eventsToTrigger = m_ceil(effectiveEnergyMax / energyPerEvent)
+	local refundProb = refundChance / 100
+	local eventsToTriggerFull = m_ceil(energyMax / energyPerEvent)
+	local eventsToTriggerRefund = m_ceil(energyMax * 0.5 / energyPerEvent)
+	local eventsToTrigger = refundProb * eventsToTriggerRefund + (1 - refundProb) * eventsToTriggerFull
 	local energyLimitedRate = eventsPerSecond / eventsToTrigger
 	local cooldownCap = mainSkillCooldownRate(mainSkill)
 	local triggerRate = m_min(energyLimitedRate, cooldownCap)
@@ -605,24 +607,22 @@ local function metaEnergyTriggerHandler(env, config)
 	output.MetaEnergyTriggerRate = triggerRate
 
 	if breakdown then
-		if refundMult ~= 1 then
+		if refundProb > 0 then
 			breakdown.MetaEnergyEventsToTrigger = {
-				s_format("%.1f ^8(Maximum Energy)", energyMax),
-				s_format("x %.3f ^8(chance-weighted Energy refund)", refundMult),
-				s_format("= %.2f ^8(effective Energy needed per trigger)", effectiveEnergyMax),
-				s_format("/ %.2f ^8(Energy per qualifying event)", energyPerEvent),
-				s_format("= %.2f, rounded up to %d ^8(qualifying events needed per trigger)", effectiveEnergyMax / energyPerEvent, eventsToTrigger),
+				s_format("%.1f%% chance: %.1f / %.2f = %.2f, rounded up to %d ^8(events needed if refund triggers)", refundChance, energyMax * 0.5, energyPerEvent, energyMax * 0.5 / energyPerEvent, eventsToTriggerRefund),
+				s_format("%.1f%% chance: %.1f / %.2f = %.2f, rounded up to %d ^8(events needed if it doesn't)", 100 - refundChance, energyMax, energyPerEvent, energyMax / energyPerEvent, eventsToTriggerFull),
+				s_format("= %.2f ^8(chance-weighted average events needed per trigger)", eventsToTrigger),
 			}
 		else
 			breakdown.MetaEnergyEventsToTrigger = {
 				s_format("%.1f ^8(Maximum Energy)", energyMax),
 				s_format("/ %.2f ^8(Energy per qualifying event)", energyPerEvent),
-				s_format("= %.2f, rounded up to %d ^8(qualifying events needed per trigger)", energyMax / energyPerEvent, eventsToTrigger),
+				s_format("= %.2f, rounded up to %d ^8(qualifying events needed per trigger)", energyMax / energyPerEvent, eventsToTriggerFull),
 			}
 		end
 		breakdown.EffectiveSourceRate = {
 			s_format("%.2f ^8(qualifying events per second%s)", eventsPerSecond, breakdown.MetaEnergyEventsPerSecond and ", auto-derived (see above)" or ", from Configuration tab"),
-			s_format("/ %d ^8(qualifying events needed per trigger)", eventsToTrigger),
+			s_format("/ %.2f ^8(qualifying events needed per trigger)", eventsToTrigger),
 			s_format("= %.2f ^8(Energy-limited trigger rate)", energyLimitedRate),
 		}
 		if cooldownCap < energyLimitedRate then
@@ -811,11 +811,33 @@ local function metaInvocationTriggerHandler(env, config)
 	-- used") - not just one discharge per activation. Energy banked between activations is capped at the
 	-- fixed Maximum Energy pool (energyMax); generation beyond that between two activations is wasted, same
 	-- "excess is discarded" rule the auto-fire gems already use.
+	--
+	-- With refund/discount chances present, each discharge within the chain independently rolls its own
+	-- cost (cost * X * Y, X/Y in {1, 0.5} for discount/refund respectively) - floor(reservoir / E[cost])
+	-- is biased (a bad roll on an early discharge can block a later one that would otherwise have fit), so
+	-- this is computed exactly via a DP over the reservoir discretized into quarters of the full cost (all
+	-- three possible per-discharge costs - full/half/quarter - are exact multiples of that quarter, so the
+	-- discretization loses no precision: any remainder below one quarter can never be spent by any outcome).
+	local pRefund, pDischargeDiscount = refundChance / 100, discountChance / 100
+	local pBoth = pRefund * pDischargeDiscount
+	local pHalf = pRefund + pDischargeDiscount - 2 * pBoth
+	local pFull = 1 - pHalf - pBoth
+	local quarterCost = totalSocketedSpellCost * 0.25
+
 	local burstRate = m_huge
 	local dischargesPerActivation = 0
 	if cooldown > 0 then
 		local energyPerActivation = m_min(generationRatePerSecond * cooldown, energyMax)
-		dischargesPerActivation = m_floor(energyPerActivation / effectiveDischargeCost)
+		local maxQuarters = m_floor(energyPerActivation / quarterCost)
+		local expectedDischarges = { [0] = 0 }
+		for q = 1, maxQuarters do
+			local e = 0
+			if q >= 4 then e = e + pFull * (1 + expectedDischarges[q - 4]) end
+			if q >= 2 then e = e + pHalf * (1 + expectedDischarges[q - 2]) end
+			if q >= 1 then e = e + pBoth * (1 + expectedDischarges[q - 1]) end
+			expectedDischarges[q] = e
+		end
+		dischargesPerActivation = expectedDischarges[maxQuarters] or 0
 		if dischargesPerActivation >= 1 then
 			burstRate = cooldownRate * dischargesPerActivation
 		end
@@ -835,7 +857,7 @@ local function metaInvocationTriggerHandler(env, config)
 	if breakdown then
 		breakdown.MetaEnergyEventsToTrigger = {
 			s_format("%.2f ^8(Energy generated per second)", generationRatePerSecond),
-			s_format("/ %.1f ^8(Energy cost of one discharge)", totalSocketedSpellCost),
+			s_format("/ %.2f ^8(effective Energy cost of one discharge)", effectiveDischargeCost),
 			s_format("= %.3f ^8(Energy-limited discharge rate)", generationLimitedRate),
 		}
 		breakdown.EffectiveSourceRate = {
@@ -843,7 +865,7 @@ local function metaInvocationTriggerHandler(env, config)
 			s_format("= %.3f ^8(activation rate)", cooldownRate),
 		}
 		if dischargesPerActivation >= 1 then
-			t_insert(breakdown.EffectiveSourceRate, s_format("x %d ^8(discharges chained per activation, from banked Energy)", dischargesPerActivation))
+			t_insert(breakdown.EffectiveSourceRate, s_format("x %.2f ^8(expected discharges chained per activation, chance-weighted from banked Energy)", dischargesPerActivation))
 			t_insert(breakdown.EffectiveSourceRate, s_format("= %.3f ^8(cooldown-limited discharge rate)", burstRate))
 		end
 		t_insert(breakdown.EffectiveSourceRate, "")

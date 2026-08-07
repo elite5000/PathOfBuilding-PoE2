@@ -401,8 +401,9 @@ describe("TestTriggers", function()
 
 	it("reduces the auto-fire Meta gems' effective Energy-to-trigger via the refund chance mod", function()
 		-- Comet (300 Energy) + Cast on Block, 25 Energy/block, 5 blocks/sec: base eventsToTrigger =
-		-- ceil(300/25) = 12, triggerRate = 5/12. A 20% refund chance -> refundMult = 0.9 ->
-		-- effectiveEnergyMax = 270 -> eventsToTrigger = ceil(270/25) = 11 -> triggerRate = 5/11.
+		-- ceil(300/25) = 12, triggerRate = 5/12. A 20% refund chance requires averaging the two already-
+		-- rounded outcomes (not rounding the average): 20% chance -> ceil(150/25) = 6 events; 80% chance ->
+		-- ceil(300/25) = 12 events. eventsToTrigger = 0.2*6 + 0.8*12 = 10.8 -> triggerRate = 5/10.8.
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Block 1/0  1")
 		build.mainSocketGroup = 1
 		build.configTab.input.metaBlockEventsPerSecond = 5
@@ -411,8 +412,30 @@ describe("TestTriggers", function()
 		runCallback("OnFrame")
 		build.calcsTab:BuildOutput()
 
-		assert.are.equals(11, build.calcsTab.mainOutput.MetaEnergyEventsToTrigger)
-		assert.near(5 / 11, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(10.8, build.calcsTab.mainOutput.MetaEnergyEventsToTrigger, 0.0001)
+		assert.near(5 / 10.8, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("averages discrete per-discharge outcomes for Invocation's chained-burst count, rather than flooring the expected cost", function()
+		-- Comet (300 Energy) + Reaper's Invocation, 1000 kills/sec (30000 Energy/sec, same as the "chains
+		-- multiple discharges" test above), 0.2s cooldown -> energyPerActivation caps at the 500 Maximum
+		-- Energy pool. With a 40% chance to consume half as much Energy (discount only, no refund):
+		-- naively, floor(500 / (300*0.8)) = floor(500/240) = 2 discharges - but that ignores that an early
+		-- discharge without the discount consumes the full 300, which can block a would-be-affordable later
+		-- discharge. The exact expected count (hand-verified via the same quarters-DP the implementation
+		-- uses: quarterCost=75, maxQuarters=6, pFull=0.6, pHalf=0.4, pBoth=0) is 1.704, not 2.
+		-- burstRate = cooldownRate(5) * 1.704 = 8.52, which binds below generationLimitedRate (30000/240=125)
+		-- and Comet's own (nonexistent) cooldown cap.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab.input.customMods = "Invocated Spells have 40% chance to consume half as much Energy"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(8.52, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("shows Spellslinger's fixed Maximum Energy even before its generation rate is set", function()
