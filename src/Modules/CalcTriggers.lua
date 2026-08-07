@@ -809,29 +809,34 @@ local function metaInvocationTriggerHandler(env, config)
 		end
 		generationRatePerSecond = generationInput * perEvent * generationMult
 	elseif config.generationPerCastTimeStat then
-		-- Auto-detection needs a self-cast, non-triggered Spell in the same group - but Spellslinger's own
-		-- hidden support attaches to every compatible Triggerable spell in that same group, so a genuine
-		-- "self-cast, untriggered Spell" companion essentially never exists there in practice. Attempted
-		-- as best-effort for the rare case a valid source does exist; otherwise config.generationRateVar
-		-- (the manual override) is read directly as the final Energy/sec, since there's no source to
-		-- supply a base cast time to decompose it against.
 		local perCastTimeSecond = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, config.generationPerCastTimeStat) or 0
-		local source, uuid = findAutoEnergySource(env, actor, mainSkill, false, true)
-		if source and uuid then
-			local cached = GlobalCache.cachedData[env.mode][uuid]
-			local sourceBaseCastTime = source.activeEffect.grantedEffect.castTime or 0
-			local castRate = (cached and (cached.HitSpeed or cached.Speed)) or 0
-			generationRatePerSecond = castRate * sourceBaseCastTime * perCastTimeSecond * 100 * generationMult
-			if breakdown and generationRatePerSecond > 0 then
-				breakdown.MetaEnergyEventsPerSecond = {
-					s_format("%.2f ^8(%s cast rate)", castRate, source.activeEffect.grantedEffect.name),
-					s_format("x %.2fs ^8(%s base cast time)", sourceBaseCastTime, source.activeEffect.grantedEffect.name),
-					s_format("x %.2f ^8(Energy generated per second of base cast time)", perCastTimeSecond * 100),
-					s_format("= %.2f ^8(Energy generated per second)", generationRatePerSecond),
-				}
+		if generationInput > 0 then
+			-- Manual override always takes precedence (matching every other Meta gem's manual-rate input),
+			-- and this field is documented (ConfigOptions.lua: "Energy generated/sec") as a final Energy/sec
+			-- value, not a casts/sec rate to be decomposed - used directly, not run back through
+			-- generationMult, which would double up any Energy-generation modifiers the player already
+			-- accounted for when entering the number.
+			generationRatePerSecond = generationInput
+		else
+			-- Auto-detection needs a self-cast, non-triggered Spell in the same group - but Spellslinger's
+			-- own hidden support attaches to every compatible Triggerable spell in that same group, so a
+			-- genuine "self-cast, untriggered Spell" companion essentially never exists there in practice.
+			-- Attempted as best-effort for the rare case a valid source does exist.
+			local source, uuid = findAutoEnergySource(env, actor, mainSkill, false, true)
+			if source and uuid then
+				local cached = GlobalCache.cachedData[env.mode][uuid]
+				local sourceBaseCastTime = source.activeEffect.grantedEffect.castTime or 0
+				local castRate = (cached and (cached.HitSpeed or cached.Speed)) or 0
+				generationRatePerSecond = castRate * sourceBaseCastTime * perCastTimeSecond * 100 * generationMult
+				if breakdown and generationRatePerSecond > 0 then
+					breakdown.MetaEnergyEventsPerSecond = {
+						s_format("%.2f ^8(%s cast rate)", castRate, source.activeEffect.grantedEffect.name),
+						s_format("x %.2fs ^8(%s base cast time)", sourceBaseCastTime, source.activeEffect.grantedEffect.name),
+						s_format("x %.2f ^8(Energy generated per second of base cast time)", perCastTimeSecond * 100),
+						s_format("= %.2f ^8(Energy generated per second)", generationRatePerSecond),
+					}
+				end
 			end
-		elseif generationInput > 0 then
-			generationRatePerSecond = generationInput * generationMult
 		end
 	elseif config.ailmentTypeVar then
 		-- Elemental Invocation: same Freeze/Shock/Ignite selector and per-event constants as Cast on

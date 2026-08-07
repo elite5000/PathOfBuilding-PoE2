@@ -665,6 +665,21 @@ describe("TestTriggers", function()
 		assert.near(30 / 300, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
+	it("does not re-scale Spellslinger's manual Energy-generated/sec override by increased-Energy mods", function()
+		-- The metaSpellslingerCastsPerSecond field is documented (ConfigOptions.lua) as a final Energy/sec
+		-- value, not a casts/sec rate - "Meta Skills gain 20% increased Energy" must not multiply it again
+		-- (30 * 1.2 = 36, which would report 36/300 = 0.12 instead of the correct 30/300 = 0.1).
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nSpellslinger 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaSpellslingerCastsPerSecond = 30
+		build.configTab.input.customMods = "Meta Skills gain 20% increased Energy"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(30 / 300, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
 	it("caps Spellslinger's discharge rate by its own cooldown when generation is abundant", function()
 		-- At 100000 Energy/sec generated, the Energy-limited rate (100000/300 = 333/sec) exceeds the
 		-- 0.2s-cooldown cap, so the cooldown is the binding constraint - tick-rounded to 0.231s (~4.329/sec).
