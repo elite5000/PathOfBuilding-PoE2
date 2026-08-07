@@ -495,6 +495,25 @@ describe("TestTriggers", function()
 		assert.is_nil(build.calcsTab.mainOutput.MetaEnergyTriggerRate)
 	end)
 
+	it("still reports the oversized payload as untriggered when only a refund chance is present, not a discount", function()
+		-- Same oversized two-Comet bundle (600 nominal cost vs. 500 Maximum Energy), but with ONLY a 20%
+		-- refund chance (no discount). A refund only returns Energy after the full cost has already been
+		-- paid, so it can never lower what's needed to attempt a discharge - the full 600 must still be
+		-- banked, which the 500 pool can never hold. A model that merges refund and discount into one
+		-- "cheapest achievable cost" (as an earlier version of this guard did) would incorrectly treat this
+		-- as affordable via the refund alone; the fix must still reject it.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nComet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab.input.customMods = "20% chance for Trigger skills to refund half of Energy Spent"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.is_nil(build.calcsTab.mainOutput.MetaEnergyTriggerRate)
+	end)
+
 	it("still reports a trigger rate for an oversized payload when refund/discount luck can make a discharge affordable", function()
 		-- Same oversized two-Comet bundle (600 nominal cost vs. 500 Maximum Energy), but with both a 20%
 		-- refund chance and a 40% discount chance present: the cheapest achievable outcome (both landing)

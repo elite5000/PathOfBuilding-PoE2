@@ -724,19 +724,23 @@ local function metaInvocationTriggerHandler(env, config)
 		}
 	end
 
-	-- Per-discharge cost distribution (cost * X * Y, X/Y independently in {1, 0.5} for discount/refund) -
-	-- shared by the "structurally impossible" guard below and the burst DP further down. All three possible
-	-- outcomes are exact multiples of quarterCost, letting the reservoir be discretized into quarters below
-	-- without losing precision.
+	-- Per-discharge cost distribution - shared by the "structurally impossible" guard below and the burst
+	-- DP further down. A discount is rolled first and determines the gross cost required to even attempt a
+	-- discharge (it reduces the cost before payment); a refund is then rolled only if the attempt succeeds,
+	-- and determines the net cost actually removed from the reservoir (it only returns Energy after the
+	-- full, possibly already-discounted, gross cost has been paid - it can never lower what's needed to
+	-- start). Gross and net are always exact multiples of quarterCost, letting the reservoir be discretized
+	-- into quarters below without losing precision.
 	local pRefund, pDischargeDiscount = refundChance / 100, discountChance / 100
-	local pBoth = pRefund * pDischargeDiscount
-	local pHalf = pRefund + pDischargeDiscount - 2 * pBoth
-	local pFull = 1 - pHalf - pBoth
+	local dischargeOutcomes = {
+		{ gross = 2, net = 1, prob = pDischargeDiscount * pRefund },
+		{ gross = 2, net = 2, prob = pDischargeDiscount * (1 - pRefund) },
+		{ gross = 4, net = 2, prob = (1 - pDischargeDiscount) * pRefund },
+		{ gross = 4, net = 4, prob = (1 - pDischargeDiscount) * (1 - pRefund) },
+	}
 	local quarterCost = totalSocketedSpellCost * 0.25
-	-- The cheapest per-discharge outcome that can ever actually occur (only counting outcomes with nonzero
-	-- probability) - if even that doesn't fit in the fixed Maximum Energy pool, no discharge is ever
-	-- possible, regardless of how fast Energy generates.
-	local minAffordableQuarters = pBoth > 0 and 1 or (pHalf > 0 and 2 or 4)
+	-- Only a discount can ever lower what's needed to attempt a discharge - a refund never can (see above).
+	local minAffordableQuarters = pDischargeDiscount > 0 and 2 or 4
 
 	-- Generation rate: manual input (config.generationRateVar), converted to Energy/sec one of three ways
 	-- depending on the gem, then scaled by "Meta Skills gain X% increased/more Energy" mods on the
@@ -829,10 +833,10 @@ local function metaInvocationTriggerHandler(env, config)
 	-- "excess is discarded" rule the auto-fire gems already use.
 	--
 	-- With refund/discount chances present, each discharge within the chain independently rolls its own
-	-- cost (cost * X * Y, X/Y in {1, 0.5} for discount/refund respectively) - floor(reservoir / E[cost])
-	-- is biased (a bad roll on an early discharge can block a later one that would otherwise have fit), so
-	-- this is computed exactly via a DP over the reservoir discretized into quarters of the full cost, using
-	-- the pFull/pHalf/pBoth/quarterCost distribution already derived above for the oversized-payload guard.
+	-- gross/net outcome - floor(reservoir / E[cost]) is biased (a bad roll on an early discharge can block a
+	-- later one that would otherwise have fit), so this is computed exactly via a DP over the reservoir
+	-- discretized into quarters, using the dischargeOutcomes/quarterCost distribution already derived above
+	-- for the oversized-payload guard.
 	local burstRate = m_huge
 	local dischargesPerActivation = 0
 	if cooldown > 0 then
@@ -841,9 +845,11 @@ local function metaInvocationTriggerHandler(env, config)
 		local expectedDischarges = { [0] = 0 }
 		for q = 1, maxQuarters do
 			local e = 0
-			if q >= 4 then e = e + pFull * (1 + expectedDischarges[q - 4]) end
-			if q >= 2 then e = e + pHalf * (1 + expectedDischarges[q - 2]) end
-			if q >= 1 then e = e + pBoth * (1 + expectedDischarges[q - 1]) end
+			for _, o in ipairs(dischargeOutcomes) do
+				if o.prob > 0 and q >= o.gross then
+					e = e + o.prob * (1 + expectedDischarges[q - o.net])
+				end
+			end
 			expectedDischarges[q] = e
 		end
 		dischargesPerActivation = expectedDischarges[maxQuarters] or 0
