@@ -438,6 +438,40 @@ describe("TestTriggers", function()
 		assert.near(8.52, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
+	it("reports Invocation as untriggered when the socketed payload costs more than the Maximum Energy pool can ever hold", function()
+		-- Two Comets (300 Energy each = 600 total) socketed with Reaper's Invocation exceed its fixed 500
+		-- Maximum Energy - the reservoir can never hold enough Energy for even one discharge. Without the
+		-- oversized-payload guard, generationLimitedRate (a pure continuous ratio unaware of the pool cap)
+		-- would still report a large positive rate here; the fix should report it as untriggered instead.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nComet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.is_nil(build.calcsTab.mainOutput.MetaEnergyTriggerRate)
+	end)
+
+	it("still reports a trigger rate for an oversized payload when refund/discount luck can make a discharge affordable", function()
+		-- Same oversized two-Comet bundle (600 nominal cost vs. 500 Maximum Energy), but with both a 20%
+		-- refund chance and a 40% discount chance present: the cheapest achievable outcome (both landing)
+		-- costs only 0.25 * 600 = 150 Energy, well under the 500 pool - so a discharge is still possible,
+		-- just less likely than the nominal cost would suggest. The guard must not reject this case.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nComet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab.input.customMods = "20% chance for Trigger skills to refund half of Energy Spent\nInvocated Spells have 40% chance to consume half as much Energy"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.is_not_nil(build.calcsTab.mainOutput.MetaEnergyTriggerRate)
+		assert.is_true(build.calcsTab.mainOutput.MetaEnergyTriggerRate > 0)
+	end)
+
 	it("shows Spellslinger's fixed Maximum Energy even before its generation rate is set", function()
 		-- No other spell in the group is a valid auto-detect source for Spellslinger (any Spell socketed
 		-- alongside it also becomes one of its own triggered targets), so with no manual input this stays

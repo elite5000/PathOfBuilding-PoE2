@@ -730,6 +730,20 @@ local function metaInvocationTriggerHandler(env, config)
 		}
 	end
 
+	-- Per-discharge cost distribution (cost * X * Y, X/Y independently in {1, 0.5} for discount/refund) -
+	-- shared by the "structurally impossible" guard below and the burst DP further down. All three possible
+	-- outcomes are exact multiples of quarterCost, letting the reservoir be discretized into quarters below
+	-- without losing precision.
+	local pRefund, pDischargeDiscount = refundChance / 100, discountChance / 100
+	local pBoth = pRefund * pDischargeDiscount
+	local pHalf = pRefund + pDischargeDiscount - 2 * pBoth
+	local pFull = 1 - pHalf - pBoth
+	local quarterCost = totalSocketedSpellCost * 0.25
+	-- The cheapest per-discharge outcome that can ever actually occur (only counting outcomes with nonzero
+	-- probability) - if even that doesn't fit in the fixed Maximum Energy pool, no discharge is ever
+	-- possible, regardless of how fast Energy generates.
+	local minAffordableQuarters = pBoth > 0 and 1 or (pHalf > 0 and 2 or 4)
+
 	-- Generation rate: manual input (config.generationRateVar), converted to Energy/sec one of three ways
 	-- depending on the gem, then scaled by "Meta Skills gain X% increased/more Energy" mods on the
 	-- Invocation itself. config.generationDivisorStat: input is a continuous quantity (e.g. Barrier
@@ -796,10 +810,17 @@ local function metaInvocationTriggerHandler(env, config)
 	local cooldown = (baseCooldown > 0 and cooldownRecoveryMod > 0) and (baseCooldown / cooldownRecoveryMod) or 0
 	local cooldownRate = cooldown > 0 and (1 / cooldown) or m_huge
 
-	if generationRatePerSecond <= 0 or totalSocketedSpellCost <= 0 then
+	-- If not even the cheapest achievable discharge (accounting for refund/discount luck) fits in the fixed
+	-- Maximum Energy pool, no discharge can ever occur - a build-configuration problem distinct from "rate
+	-- not set yet", reported with its own message rather than falling through to a positive trigger rate via
+	-- generationLimitedRate's unbounded continuous-pool assumption.
+	local oversizedPayload = m_floor(energyMax / quarterCost) < minAffordableQuarters
+	if generationRatePerSecond <= 0 or totalSocketedSpellCost <= 0 or oversizedPayload then
 		mainSkill.skillData.triggered = nil
 		mainSkill.infoMessage2 = "DPS reported assuming Self-Cast"
-		mainSkill.infoMessage = s_format("Set %s's Energy generation rate in the Configuration tab", config.triggerName or "Invocation")
+		mainSkill.infoMessage = oversizedPayload
+			and s_format("%s's socketed spells cost more Energy than its Maximum Energy pool can hold", config.triggerName or "Invocation")
+			or s_format("Set %s's Energy generation rate in the Configuration tab", config.triggerName or "Invocation")
 		mainSkill.infoTrigger = ""
 		return
 	end
@@ -815,15 +836,8 @@ local function metaInvocationTriggerHandler(env, config)
 	-- With refund/discount chances present, each discharge within the chain independently rolls its own
 	-- cost (cost * X * Y, X/Y in {1, 0.5} for discount/refund respectively) - floor(reservoir / E[cost])
 	-- is biased (a bad roll on an early discharge can block a later one that would otherwise have fit), so
-	-- this is computed exactly via a DP over the reservoir discretized into quarters of the full cost (all
-	-- three possible per-discharge costs - full/half/quarter - are exact multiples of that quarter, so the
-	-- discretization loses no precision: any remainder below one quarter can never be spent by any outcome).
-	local pRefund, pDischargeDiscount = refundChance / 100, discountChance / 100
-	local pBoth = pRefund * pDischargeDiscount
-	local pHalf = pRefund + pDischargeDiscount - 2 * pBoth
-	local pFull = 1 - pHalf - pBoth
-	local quarterCost = totalSocketedSpellCost * 0.25
-
+	-- this is computed exactly via a DP over the reservoir discretized into quarters of the full cost, using
+	-- the pFull/pHalf/pBoth/quarterCost distribution already derived above for the oversized-payload guard.
 	local burstRate = m_huge
 	local dischargesPerActivation = 0
 	if cooldown > 0 then
