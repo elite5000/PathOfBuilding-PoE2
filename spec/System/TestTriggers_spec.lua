@@ -532,6 +532,26 @@ describe("TestTriggers", function()
 		assert.is_true(build.calcsTab.mainOutput.MetaEnergyTriggerRate > 0)
 	end)
 
+	it("caps the trigger rate by a fractional (sub-1) expected discharge count, not just the continuous rate", function()
+		-- Same oversized two-Comet bundle (600 Energy) + Reaper's Invocation, but with only a 40% discount
+		-- chance (no refund): the only affordable outcome needs a 300-Energy gross cost (2 of 3 quarters
+		-- banked, quarterCost=150), so dischargesPerActivation = 0.4 exactly (hand-verified via the same DP
+		-- the implementation uses: q=1 affords nothing, q=2 gives 0.4*(1+ED[0])=0.4, q=3 gives
+		-- 0.4*(1+ED[1]=0)=0.4). burstRate = cooldownRate(1/0.231) * 0.4 - a real, every-cycle probabilistic
+		-- cap that must bind below the far larger generationLimitedRate (30000/480 = 62.5), not be skipped
+		-- because 0.4 < 1.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nComet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab.input.customMods = "Invocated Spells have 40% chance to consume half as much Energy"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(0.4 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
 	it("shows Spellslinger's fixed Maximum Energy even before its generation rate is set", function()
 		-- No other spell in the group is a valid auto-detect source for Spellslinger (any Spell socketed
 		-- alongside it also becomes one of its own triggered targets), so with no manual input this stays

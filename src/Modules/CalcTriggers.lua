@@ -853,7 +853,12 @@ local function metaInvocationTriggerHandler(env, config)
 			expectedDischarges[q] = e
 		end
 		dischargesPerActivation = expectedDischarges[maxQuarters] or 0
-		if dischargesPerActivation >= 1 then
+		-- A sub-1 expected count is still a real, every-cycle probabilistic rate (e.g. a 40% discount chance
+		-- with nothing else affordable gives exactly 0.4 expected discharges per activation) - not "never
+		-- happens" the way a literal 0 does. Only an exact 0 (this activation's banked amount falls below
+		-- what the oversized-payload guard already confirmed the full pool could afford) means the burst
+		-- model genuinely doesn't apply yet, correctly falling back to the continuous generationLimitedRate.
+		if dischargesPerActivation > 0 then
 			burstRate = cooldownRate * dischargesPerActivation
 		end
 	end
