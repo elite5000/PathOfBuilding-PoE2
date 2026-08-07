@@ -29,6 +29,24 @@ local function addTriggerIncMoreMods(activeSkill, sourceSkill)
 	end
 end
 
+-- Same conversion as addTriggerIncMoreMods, for the Meta/Invocation gems' custom trigger handlers. Unlike a
+-- normal trigger-support gem (whose own stats, including any TriggeredDamage grant, propagate onto its
+-- supported skill's own modList via the standard support-to-supported mechanism, so activeSkill and
+-- sourceSkill are the same modList there), a Meta/Invocation gem's alt-quality "Triggered Skills deal X%
+-- increased Damage" stat is declared on the visible Meta/Invocation skill itself, not the hidden per-payload
+-- support - so the TriggeredDamage mod lives on metaSkill's own modList, never mainSkill's. The
+-- SkillType.Triggered tag it carries still needs to be matched against mainSkill's cfg (the hidden support
+-- gives every payload that flag), so the read and write sides can't share one skill the way
+-- addTriggerIncMoreMods assumes.
+local function addMetaTriggerIncMoreMods(mainSkill, metaSkill)
+	for _, value in ipairs(metaSkill.skillModList:Tabulate("INC", mainSkill.skillCfg, "TriggeredDamage")) do
+		mainSkill.skillModList:NewMod("Damage", "INC", value.mod.value, value.mod.source, value.mod.flags, value.mod.keywordFlags, unpack(value.mod))
+	end
+	for _, value in ipairs(metaSkill.skillModList:Tabulate("MORE", mainSkill.skillCfg, "TriggeredDamage")) do
+		mainSkill.skillModList:NewMod("Damage", "MORE", value.mod.value, value.mod.source, value.mod.flags, value.mod.keywordFlags, unpack(value.mod))
+	end
+end
+
 local function slotMatch(env, skill)
 	local fromItem = (env.player.mainSkill.activeEffect.grantedEffect.fromItem or skill.activeEffect.grantedEffect.fromItem)
 	fromItem = fromItem or (env.player.mainSkill.activeEffect.srcInstance and env.player.mainSkill.activeEffect.srcInstance.fromItem) or (skill.activeEffect.srcInstance and skill.activeEffect.srcInstance.fromItem)
@@ -610,6 +628,10 @@ local function metaEnergyTriggerHandler(env, config)
 	local cooldownCap = mainSkillCooldownRate(mainSkill)
 	local triggerRate = m_min(energyLimitedRate, cooldownCap)
 
+	-- Account for Trigger-related INC/MORE modifiers (e.g. alt-quality "Triggered Skills deal X% increased
+	-- Damage" on the Meta gem itself) - see addMetaTriggerIncMoreMods for why this isn't the generic
+	-- addTriggerIncMoreMods (the mod lives on metaSkill's own modList, not mainSkill's).
+	addMetaTriggerIncMoreMods(mainSkill, metaSkill)
 	mainSkill.skillData.triggered = true
 	mainSkill.skillData.triggerRate = triggerRate
 	mainSkill.infoMessage = config.triggerName
@@ -885,6 +907,13 @@ local function metaInvocationTriggerHandler(env, config)
 	local spellCooldownCap = mainSkillCooldownRate(mainSkill)
 	local triggerRate = m_min(generationLimitedRate, burstRate, spellCooldownCap)
 
+	-- Account for Trigger-related INC/MORE modifiers (e.g. alt-quality "Triggered Skills deal X% increased
+	-- Damage" on the Invocation gem itself), matching the generic trigger handler's own call - but the
+	-- TriggeredDamage mod lives on metaSkill's own modList (declared on the visible Invocation gem, not the
+	-- hidden per-payload support), not mainSkill's, so it needs addMetaTriggerIncMoreMods's read-from-meta,
+	-- write-to-payload split rather than the generic addTriggerIncMoreMods (which assumes both are the same
+	-- skill).
+	addMetaTriggerIncMoreMods(mainSkill, metaSkill)
 	mainSkill.skillData.triggered = true
 	mainSkill.skillData.triggerRate = triggerRate
 	mainSkill.infoMessage = config.triggerName

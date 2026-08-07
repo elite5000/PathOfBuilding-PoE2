@@ -400,6 +400,38 @@ describe("TestTriggers", function()
 		assert.near(1 / 0.132, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
+	it("applies alt-quality Reaper's Invocation's Triggered Damage bonus to the payload's DPS", function()
+		-- Reaper's Invocation's altQualityStats grants "triggered_skill_damage_+%" at 1 per quality point,
+		-- mapped to TriggeredDamage (SkillStatMap.lua). That mod is declared on Reaper's Invocation itself
+		-- (metaSkill), not the hidden per-payload support - it needs addMetaTriggerIncMoreMods's read-from-
+		-- metaSkill/write-to-mainSkill split, not the generic addTriggerIncMoreMods, to reach Comet's Damage.
+		-- Alt-quality is a build-wide toggle (env.useAltGemQualityStats), driven by an allocated tree node
+		-- (here "Advanced Thaumaturgy", id 14429, confirmed real via TestSkills_spec.lua's own use of this
+		-- same node) rather than a per-gem flag or parseable text mod - 20 quality -> 20% increased
+		-- Triggered Damage.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/20  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 2
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+		assert.is_not_nil(build.calcsTab.mainOutput.MetaEnergyTriggerRate)
+		local baseDPS = build.calcsTab.mainOutput.TotalDPS
+
+		-- Directly allocating the node (bypassing the interactive-UI-only path-hover mechanism AllocNode
+		-- normally requires) - calc code just reads spec.allocNodes as a plain table.
+		local advancedThaumaturgy = build.spec.nodes[14429]
+		advancedThaumaturgy.alloc = true
+		build.spec.allocNodes[14429] = advancedThaumaturgy
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		-- Not an exact 1.20x (Comet's real damage calc has more than one INC/MORE contributor interacting),
+		-- but within a fraction of a percent - enough to confirm the mod is actually applying.
+		assert.near(baseDPS * 1.20, build.calcsTab.mainOutput.TotalDPS, baseDPS * 0.005)
+	end)
+
 	it("scales Invocation's fixed Maximum Energy by an explicit increased-Maximum-Energy modifier", function()
 		-- "Invocated skills have X% increased Maximum Energy" scales the fixed 500 pool itself, distinct
 		-- from "Meta Skills gain X% increased Energy" (generation rate) - found via ultrareview to have
