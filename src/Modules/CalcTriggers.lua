@@ -489,6 +489,7 @@ local function metaEnergyTriggerHandler(env, config)
 	-- Maximum Energy is the sum of every socketed spell's cost: 100 * base cast/attack time,
 	-- plus flat "Total Cast/Attack Time" additions counted at double value (general Energy rule).
 	local energyMax = 0
+	local spellCosts = {}
 	local costBreakdown = breakdown and {}
 	for _, skill in ipairs(actor.activeSkillList) do
 		if skill.socketGroup == mainSkill.socketGroup and skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
@@ -498,6 +499,7 @@ local function metaEnergyTriggerHandler(env, config)
 				local totalTime = skill.skillModList:Sum("BASE", skill.skillCfg, "TotalCastTime") + skill.skillModList:Sum("BASE", skill.skillCfg, "TotalAttackTime")
 				local cost = ((baseTime * 1000) + (totalTime * 1000 * 2)) / costRateMs
 				energyMax = energyMax + cost
+				t_insert(spellCosts, cost)
 				if costBreakdown then
 					t_insert(costBreakdown, s_format("%.1f ^8Energy (%s: %.2fs base%s)", cost, skill.activeEffect.grantedEffect.name, baseTime, totalTime > 0 and s_format(" + 2x%.2fs Total Cast Time", totalTime) or ""))
 				end
@@ -577,16 +579,33 @@ local function metaEnergyTriggerHandler(env, config)
 		return
 	end
 
-	-- "X% chance for Trigger skills to refund half of Energy Spent": each trigger either refunds half the
-	-- pool (rounding down to fewer events needed next cycle) or doesn't - two discrete, already-rounded
-	-- outcomes. The long-run average events-per-trigger is the chance-weighted average of those two rounded
-	-- outcomes (E[ceil(cost)]), not ceil of the averaged cost (ceil(E[cost])) - those aren't the same number,
-	-- since rounding doesn't commute with averaging.
+	-- "X% chance for Trigger skills to refund half of Energy Spent" belongs to each socketed spell's own
+	-- Energy spend, rolled independently - not one shared roll against the combined pool. For a multi-spell
+	-- bundle this produces more than two possible totals (e.g. two spells: both refund, only one refunds
+	-- either way, or neither), built here by convolving each spell's own two-outcome distribution in turn.
+	-- The long-run average events-per-trigger is the chance-weighted average of ceil(total/energyPerEvent)
+	-- across all resulting branches - not ceil of the averaged total - since rounding doesn't commute with
+	-- averaging.
 	local refundChance = m_min(100, metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyRefundChance"))
 	local refundProb = refundChance / 100
 	local eventsToTriggerFull = m_ceil(energyMax / energyPerEvent)
-	local eventsToTriggerRefund = m_ceil(energyMax * 0.5 / energyPerEvent)
-	local eventsToTrigger = refundProb * eventsToTriggerRefund + (1 - refundProb) * eventsToTriggerFull
+	local energyDist = { { value = 0, prob = 1 } }
+	if refundProb > 0 then
+		for _, cost in ipairs(spellCosts) do
+			local nextDist = {}
+			for _, branch in ipairs(energyDist) do
+				t_insert(nextDist, { value = branch.value + cost, prob = branch.prob * (1 - refundProb) })
+				t_insert(nextDist, { value = branch.value + cost * 0.5, prob = branch.prob * refundProb })
+			end
+			energyDist = nextDist
+		end
+	else
+		energyDist = { { value = energyMax, prob = 1 } }
+	end
+	local eventsToTrigger = 0
+	for _, branch in ipairs(energyDist) do
+		eventsToTrigger = eventsToTrigger + branch.prob * m_ceil(branch.value / energyPerEvent)
+	end
 	local energyLimitedRate = eventsPerSecond / eventsToTrigger
 	local cooldownCap = mainSkillCooldownRate(mainSkill)
 	local triggerRate = m_min(energyLimitedRate, cooldownCap)
@@ -603,8 +622,8 @@ local function metaEnergyTriggerHandler(env, config)
 	if breakdown then
 		if refundProb > 0 then
 			breakdown.MetaEnergyEventsToTrigger = {
-				s_format("%.1f%% chance: %.1f / %.2f = %.2f, rounded up to %d ^8(events needed if refund triggers)", refundChance, energyMax * 0.5, energyPerEvent, energyMax * 0.5 / energyPerEvent, eventsToTriggerRefund),
-				s_format("%.1f%% chance: %.1f / %.2f = %.2f, rounded up to %d ^8(events needed if it doesn't)", 100 - refundChance, energyMax, energyPerEvent, energyMax / energyPerEvent, eventsToTriggerFull),
+				s_format("%.1f ^8(Maximum Energy)", energyMax),
+				s_format("%.1f%% ^8chance per socketed spell to refund half its Energy Spent (rolled independently)", refundChance),
 				s_format("= %.2f ^8(chance-weighted average events needed per trigger)", eventsToTrigger),
 			}
 		else

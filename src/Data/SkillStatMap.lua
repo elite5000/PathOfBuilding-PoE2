@@ -2284,6 +2284,14 @@ return {
 ["generic_ongoing_trigger_maximum_energy"] = {
 	mod("MetaEnergyMax", "BASE", nil),
 },
+-- Energy Retention ("...chance to partially Refund...") and Energy Capacitor ("...significantly higher
+-- Maximum Energy") support gems - same target stats the equivalent text mods parse to in ModParser.lua.
+["trigger_skills_refund_half_energy_spent_chance_%"] = {
+	mod("MetaEnergyRefundChance", "BASE", nil),
+},
+["skill_maximum_energy_+%"] = {
+	mod("MetaEnergyMaxIncrease", "INC", nil),
+},
 -- Per-event Energy gain, one stat per meta gem (value is in "centienergy", i.e. Energy / 100)
 ["cast_on_crit_gain_X_centienergy_per_monster_power_on_crit"] = {
 	mod("MetaEnergyPerEvent", "BASE", nil),

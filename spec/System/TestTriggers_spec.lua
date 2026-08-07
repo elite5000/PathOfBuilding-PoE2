@@ -415,6 +415,38 @@ describe("TestTriggers", function()
 		assert.near(650, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
 	end)
 
+	it("applies Energy Capacitor's fixed Maximum Energy increase via its own skill stat, not just text mods", function()
+		-- Energy Capacitor is a real support gem (requireSkillTypes = SkillType.Invocation) granting a fixed
+		-- "skill_maximum_energy_+%" = 80 stat directly, mapped through SkillStatMap.lua rather than parsed
+		-- from item text - a separate code path from the "Invocated skills have X% increased Maximum Energy"
+		-- text mod tested above, but landing on the same MetaEnergyMaxIncrease stat: 500 * 1.8 = 900.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1\nEnergy Capacitor 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(900, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
+	end)
+
+	it("applies Energy Retention's fixed refund chance via its own skill stat, not just text mods", function()
+		-- Energy Retention is a real support gem (requireSkillTypes = SkillType.GeneratesEnergy) granting a
+		-- fixed "trigger_skills_refund_half_energy_spent_chance_%" = 35 stat directly, mapped through
+		-- SkillStatMap.lua rather than parsed from item text, landing on the same MetaEnergyRefundChance
+		-- stat as the "X% chance for Trigger skills to refund half of Energy Spent" text mod. Single-spell
+		-- bundle, so this reduces to the same 2-branch model already verified: eventsToTrigger =
+		-- 0.35*ceil(150/25) + 0.65*ceil(300/25) = 0.35*6 + 0.65*12 = 9.9.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Block 1/0  1\nEnergy Retention 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaBlockEventsPerSecond = 5
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(9.9, build.calcsTab.mainOutput.MetaEnergyEventsToTrigger, 0.0001)
+		assert.near(5 / 9.9, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
 	it("reduces Invocation's effective discharge cost via Energy refund/discount chance mods", function()
 		-- Both mods reduce to the same expected-value multiplier on the cost of one discharge:
 		-- (1 - chance/200). 20% refund -> 0.9, 40% discount -> 0.8, combined (independent) -> 0.72.
@@ -453,6 +485,28 @@ describe("TestTriggers", function()
 
 		assert.near(10.8, build.calcsTab.mainOutput.MetaEnergyEventsToTrigger, 0.0001)
 		assert.near(5 / 10.8, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("rolls the refund chance independently for each socketed spell in a multi-spell bundle, not once for the whole pool", function()
+		-- Two Comets (300 Energy each, 600 total) + Cast on Block, with a manual 40-Energy-per-block
+		-- override (metaBlockEnergyPerEvent) chosen so the division doesn't come out clean, and a 50%
+		-- refund chance. A single pooled roll on the combined 600 would give branches {600: 50%, 300: 50%}
+		-- -> 0.5*ceil(600/40) + 0.5*ceil(300/40) = 0.5*15 + 0.5*8 = 11.5. Rolling independently per spell
+		-- gives four equally-likely combinations collapsing to {600: 25%, 450: 50%, 300: 25%} ->
+		-- 0.25*15 + 0.5*ceil(450/40) + 0.25*8 = 0.25*15 + 0.5*12 + 0.25*8 = 11.75 - a different, larger
+		-- (more accurate) number of events needed, since ceil doesn't commute with how the total is
+		-- decomposed into independent per-spell rolls.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nComet 20/0  1\nCast on Block 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.metaBlockEventsPerSecond = 5
+		build.configTab.input.metaBlockEnergyPerEvent = 40
+		build.configTab.input.customMods = "50% chance for Trigger skills to refund half of Energy Spent"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(600, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
+		assert.near(11.75, build.calcsTab.mainOutput.MetaEnergyEventsToTrigger, 0.0001)
 	end)
 
 	it("averages discrete per-discharge outcomes for Invocation's chained-burst count, rather than flooring the expected cost", function()
