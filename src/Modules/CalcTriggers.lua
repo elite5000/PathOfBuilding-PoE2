@@ -736,6 +736,7 @@ local function metaInvocationTriggerHandler(env, config)
 	-- Cost of one full discharge: same per-socketed-spell cost formula as the auto-fire Meta gems, just
 	-- summed here for "what one discharge consumes" rather than "what fills the (separately fixed) pool".
 	local totalSocketedSpellCost = 0
+	local spellCosts = {}
 	local costBreakdown = breakdown and {}
 	for _, skill in ipairs(actor.activeSkillList) do
 		if slotMatch(env, skill) and skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
@@ -745,6 +746,7 @@ local function metaInvocationTriggerHandler(env, config)
 				local totalTime = skill.skillModList:Sum("BASE", skill.skillCfg, "TotalCastTime") + skill.skillModList:Sum("BASE", skill.skillCfg, "TotalAttackTime")
 				local cost = ((baseTime * 1000) + (totalTime * 1000 * 2)) / costRateMs
 				totalSocketedSpellCost = totalSocketedSpellCost + cost
+				t_insert(spellCosts, cost)
 				if costBreakdown then
 					t_insert(costBreakdown, s_format("%.1f ^8Energy (%s: %.2fs base%s)", cost, skill.activeEffect.grantedEffect.name, baseTime, totalTime > 0 and s_format(" + 2x%.2fs Total Cast Time", totalTime) or ""))
 				end
@@ -799,22 +801,49 @@ local function metaInvocationTriggerHandler(env, config)
 	end
 
 	-- Per-discharge cost distribution - shared by the "structurally impossible" guard below and the burst
-	-- DP further down. A discount is rolled first and determines the gross cost required to even attempt a
-	-- discharge (it reduces the cost before payment); a refund is then rolled only if the attempt succeeds,
-	-- and determines the net cost actually removed from the reservoir (it only returns Energy after the
-	-- full, possibly already-discounted, gross cost has been paid - it can never lower what's needed to
-	-- start). Gross and net are always exact multiples of quarterCost, letting the reservoir be discretized
-	-- into quarters below without losing precision.
+	-- DP further down. The discount is rolled independently for each socketed spell (each spell's own
+	-- cost is its own discount roll, not one shared roll for the whole bundle - a bundle-level roll would
+	-- treat a multi-spell payload as if it were a single spell, understating the spread of possible
+	-- totals), the same convolution metaEnergyTriggerHandler's refund fix uses (see spellCosts there).
+	-- A refund is then rolled once per discharge attempt (only if it succeeds), against whatever gross
+	-- total the discount convolution landed on - it only returns Energy after the full, possibly
+	-- already-discounted, gross cost has been paid, so unlike the discount it isn't a per-spell property.
 	local pRefund, pDischargeDiscount = refundChance / 100, discountChance / 100
-	local dischargeOutcomes = {
-		{ gross = 2, net = 1, prob = pDischargeDiscount * pRefund },
-		{ gross = 2, net = 2, prob = pDischargeDiscount * (1 - pRefund) },
-		{ gross = 4, net = 2, prob = (1 - pDischargeDiscount) * pRefund },
-		{ gross = 4, net = 4, prob = (1 - pDischargeDiscount) * (1 - pRefund) },
-	}
-	local quarterCost = totalSocketedSpellCost * 0.25
+	local grossDist = { { value = totalSocketedSpellCost, prob = 1 } }
+	if pDischargeDiscount > 0 then
+		for _, cost in ipairs(spellCosts) do
+			local nextDist = {}
+			for _, branch in ipairs(grossDist) do
+				t_insert(nextDist, { value = branch.value, prob = branch.prob * (1 - pDischargeDiscount) })
+				t_insert(nextDist, { value = branch.value - cost * 0.5, prob = branch.prob * pDischargeDiscount })
+			end
+			grossDist = nextDist
+		end
+	end
+	local dischargeOutcomes = {}
+	for _, g in ipairs(grossDist) do
+		t_insert(dischargeOutcomes, { gross = g.value, net = g.value, prob = g.prob * (1 - pRefund) })
+		if pRefund > 0 then
+			t_insert(dischargeOutcomes, { gross = g.value, net = g.value * 0.5, prob = g.prob * pRefund })
+		end
+	end
+	-- The reservoir DP below needs gross/net expressed as small integer multiples of one shared unit to
+	-- recurse over. With a single socketed spell that unit is exactly a quarter of its cost, same as
+	-- before; with several spells of different costs, no single unit evenly divides every combination of
+	-- full/half-discounted totals, so this rounds to the nearest quarter of the *cheapest* socketed
+	-- spell - exact for equal or simply-related costs, a small (sub-Energy-unit) approximation otherwise.
+	local unit = m_min(unpack(spellCosts)) * 0.25
+	local minGrossQuarters = m_huge
+	for _, o in ipairs(dischargeOutcomes) do
+		o.grossQuarters = m_floor(o.gross / unit + 0.5)
+		o.netQuarters = m_floor(o.net / unit + 0.5)
+		if o.prob > 0 and o.grossQuarters < minGrossQuarters then
+			minGrossQuarters = o.grossQuarters
+		end
+	end
+	local quarterCost = unit
 	-- Only a discount can ever lower what's needed to attempt a discharge - a refund never can (see above).
-	local minAffordableQuarters = pDischargeDiscount > 0 and 2 or 4
+	local minAffordableQuarters = minGrossQuarters
 
 	-- Generation rate: manual input (config.generationRateVar), converted to Energy/sec one of three ways
 	-- depending on the gem, then scaled by "Meta Skills gain X% increased/more Energy" mods on the
@@ -930,8 +959,8 @@ local function metaInvocationTriggerHandler(env, config)
 		for q = 1, maxQuarters do
 			local e = 0
 			for _, o in ipairs(dischargeOutcomes) do
-				if o.prob > 0 and q >= o.gross then
-					e = e + o.prob * (1 + expectedDischarges[q - o.net])
+				if o.prob > 0 and q >= o.grossQuarters then
+					e = e + o.prob * (1 + expectedDischarges[q - o.netQuarters])
 				end
 			end
 			expectedDischarges[q] = e

@@ -802,13 +802,17 @@ describe("TestTriggers", function()
 	end)
 
 	it("caps the trigger rate by a fractional (sub-1) expected discharge count, not just the continuous rate", function()
-		-- Same oversized two-Comet bundle (600 Energy) + Reaper's Invocation, but with only a 40% discount
-		-- chance (no refund): the only affordable outcome needs a 300-Energy gross cost (2 of 3 quarters
-		-- banked, quarterCost=150), so dischargesPerActivation = 0.4 exactly (hand-verified via the same DP
-		-- the implementation uses: q=1 affords nothing, q=2 gives 0.4*(1+ED[0])=0.4, q=3 gives
-		-- 0.4*(1+ED[1]=0)=0.4). burstRate = cooldownRate(1/0.231) * 0.4 - a real, every-cycle probabilistic
-		-- cap that must bind below the far larger generationLimitedRate (30000/480 = 62.5), not be skipped
-		-- because 0.4 < 1.
+		-- Same oversized two-Comet bundle (600 Energy) + Reaper's Invocation, with a 40% discount chance
+		-- (no refund), now rolled independently per socketed spell rather than once for the whole bundle:
+		-- gross outcomes are {600: 0.6*0.6=36%, 450: 2*0.6*0.4=48%, 300: 0.4*0.4=16%} instead of the old
+		-- bundle-level {600: 60%, 300: 40%}. unit = min(300,300)*0.25 = 75 (a quarter of one Comet, finer
+		-- than the old bundle-wide quarterCost=150), so gross quarters are 8/6/4 respectively out of
+		-- maxQuarters = floor(500/75) = 6. Hand-verified via the same DP the implementation uses: q=1..3
+		-- afford nothing (min gross is 4 quarters); q=4 gives 0.16*(1+ED[0])=0.16; q=5 gives
+		-- 0.16*(1+ED[1]=0)=0.16; q=6 gives 0.16*(1+ED[2]=0) + 0.48*(1+ED[0]) = 0.16+0.48 = 0.64 (the 8-quarter
+		-- outcome never fits within maxQuarters=6). burstRate = cooldownRate(1/0.231) * 0.64 - still binds
+		-- below the unaffected generationLimitedRate (30000/480 = 62.5, since E[gross] is the same either
+		-- way - only the discrete distribution shape changed, not its average).
 		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nComet 20/0  1\nReaper's Invocation 1/0  1")
 		build.mainSocketGroup = 1
 		build.configTab.input.enemyIsBoss = "None"
@@ -818,7 +822,32 @@ describe("TestTriggers", function()
 		runCallback("OnFrame")
 		build.calcsTab:BuildOutput()
 
-		assert.near(0.4 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+		assert.near(0.64 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("rolls Invocation's discount chance independently per spell, reflecting each spell's own cost", function()
+		-- Comet (300 Energy) + Spark (70 Energy) = 370 total, unlike the equal-cost two-Comet tests above,
+		-- so a per-spell roll produces four genuinely DISTINCT gross totals - not just two (bundle-level)
+		-- or three (equal-cost collision): 370 (neither discounted, 25%), 335 (only Spark, 25%), 220 (only
+		-- Comet, 25%), 185 (both, 25%). unit = min(300,70)*0.25 = 17.5 (a quarter of the cheaper spell,
+		-- Spark), so quarters are 21/19/13/11 respectively (370/17.5=21.14->21, etc. - not exact multiples
+		-- since 300 and 70 don't share a clean ratio, the documented rounding approximation). Reaper's
+		-- Invocation's fixed 500 Energy pool and 0.2s cooldown (tick-rounded to 0.231s) give maxQuarters =
+		-- floor(500/17.5) = 28. Hand-verified via the same DP the implementation uses (spot checks): ED[13]
+		-- = 0.5 (both the 13- and 11-quarter outcomes fit), climbing to ED[28] = 1.25 once the 19- and
+		-- 21-quarter outcomes also become reachable - confirmed against the live implementation's output
+		-- before writing this assertion.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nSpark 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab.input.customMods = "Invocated Spells have 50% chance to consume half as much Energy"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(500, build.calcsTab.mainOutput.MetaEnergyMax, 0.01)
+		assert.near(1.25 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("shows Spellslinger's fixed Maximum Energy even before its generation rate is set", function()
