@@ -177,6 +177,25 @@ describe("TestAilments", function()
 		assert.True(shockDPS == nil or shockDPS.rowList == nil)
 	end)
 
+	it("honors a modified Maximum Shock effect cap instead of a hardcoded 100%", function()
+		-- ShockSourceEffect used to hard-cap at a bare 100 regardless of any "+% to Maximum Effect of Shock"
+		-- modifier, even though CalcPerform.lua already computes the correct, modifier-aware cap and exposes
+		-- it as output.MaximumShock (used elsewhere, e.g. CurrentShock). 2000% increased Magnitude pushes the
+		-- base 20% effect to 420%, comfortably over both the old and new cap, so this only passes if the
+		-- breakdown's own cap is actually 140, not 100.
+		build.skillsTab:PasteSocketGroup("Ball Lightning 20/0  1\n")
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.customMods = "2000% increased Magnitude of Shock\n+40% to Maximum Effect of Shock"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		assert.near(140, build.calcsTab.calcsOutput.MaximumShock, 0.01)
+		assert.near(140, build.calcsTab.calcsOutput.ShockSourceEffect, 0.01)
+
+		local effectText = table.concat(build.calcsTab.calcsEnv.player.breakdown.ShockEffectMod, "\n")
+		assert.truthy(effectText:match("capped at 140%%"))
+	end)
+
 	it("estimates sustained Ignite chance from steady-state Flammability stacking without changing existing Ignite outputs", function()
 		build.skillsTab:PasteSocketGroup("Fireball 20/0  1\n")
 		build.configTab.input.customMods = "100% chance to Ignite"
@@ -197,12 +216,36 @@ describe("TestAilments", function()
 
 		local effectText = table.concat(build.calcsTab.calcsEnv.player.breakdown.IgniteChanceSteadyState, "\n")
 		assert.truthy(effectText:match("per hit"))
-		assert.truthy(effectText:match("per second"))
+		assert.truthy(effectText:match("hit rate"))
+		assert.truthy(effectText:match("hit chance"))
 
 		-- The new estimate must not change any existing Ignite output.
 		assert.are.equals(onHit, build.calcsTab.calcsOutput.IgniteChanceOnHit)
 		assert.are.equals(onCrit, build.calcsTab.calcsOutput.IgniteChanceOnCrit)
 		assert.are.equals(dps, build.calcsTab.calcsOutput.IgniteDPS)
+	end)
+
+	it("scales sustained Ignite chance by hit chance, not raw attack speed alone", function()
+		-- The steady-state estimate used to multiply IgniteChancePerHit by raw HitSpeed/Speed only, ignoring
+		-- hit chance entirely - an inaccurate attack would overstate how many Flammability instances actually
+		-- land per second. A huge enemy Evasion value tanks Quarterstaff Strike's hit chance to a known,
+		-- precise 5% floor without touching its attack speed, giving an exact expected value.
+		equipQuarterstaff()
+		build.skillsTab:PasteSocketGroup("Quarterstaff Strike 20/0  1\n")
+		build.configTab.input.customMods = "100% chance to Ignite"
+		build.configTab.input.enemyEvasion = 500000
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+
+		local chancePerHit = build.calcsTab.calcsOutput.IgniteChancePerHit
+		local rawRate = build.calcsTab.calcsOutput.HitSpeed or build.calcsTab.calcsOutput.Speed
+		local hitChance = build.calcsTab.calcsOutput.HitChance
+		assert.near(5, hitChance, 0.01)
+
+		local expected = math.min(100, chancePerHit * rawRate * (hitChance / 100) * 8)
+		assert.near(expected, build.calcsTab.calcsOutput.IgniteChanceSteadyState, 0.01)
+		-- The old (buggy) raw-rate-only formula would report a materially higher value here.
+		assert.is_true(build.calcsTab.calcsOutput.IgniteChanceSteadyState < math.min(100, chancePerHit * rawRate * 8) - 0.01)
 	end)
 
 	-- Unlike Ignite/Shock, Bleed's chance is not damage-vs-threshold scaled at all: "Damage does not

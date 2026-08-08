@@ -5066,7 +5066,13 @@ function calcs.offence(env, actor, activeSkill)
 			-- contribution above; this estimates the sustained steady-state total for fast-hitting builds,
 			-- as an additional informational output - it does not feed into IgniteDPS or any other calculation.
 			if ailment == "Ignite" then
-				local hitRate = globalOutput.HitSpeed or globalOutput.Speed or 0
+				-- Effective hit rate, matching the "output.HitChance / 100 * (HitSpeed or Speed) *
+				-- output.DpsMultiplier" shape used everywhere else in this file - raw attack/cast speed alone
+				-- overstates this for inaccurate attacks (not every use lands) and understates it for
+				-- multi-hit skills (each use rolls Flammability contributions from more than one hit).
+				local rawRate = globalOutput.HitSpeed or globalOutput.Speed or 0
+				local dpsMultiplier = globalOutput.DpsMultiplier or 1
+				local hitRate = rawRate * dpsMultiplier * (output.HitChance or 100) / 100
 				if hitRate > 0 then
 					globalOutput.IgniteChanceSteadyState = m_min(100, globalOutput.IgniteChancePerHit * hitRate * data.gameConstants.BaseFlammabilityDuration)
 					if breakdown then
@@ -5074,7 +5080,9 @@ function calcs.offence(env, actor, activeSkill)
 						breakdown.multiChain(breakdown.IgniteChanceSteadyState, {
 							label = "Sustained Ignite chance ^8(estimated steady-state Flammability stacking):",
 							base = { "%.1f%% ^8(chance per hit)", globalOutput.IgniteChancePerHit },
-							{ "%.2f ^8(hits per second)", hitRate },
+							{ "%.2f ^8(hit rate)", rawRate },
+							{ "%.2f ^8(hits per use)", dpsMultiplier },
+							{ "%.2f%% ^8(hit chance)", output.HitChance or 100 },
 							{ "%.1f ^8(seconds a Flammability instance remains active)", data.gameConstants.BaseFlammabilityDuration },
 							total = s_format("= %.0f%% ^8(capped at 100%%)", globalOutput.IgniteChanceSteadyState)
 						})
@@ -5592,10 +5600,14 @@ function calcs.offence(env, actor, activeSkill)
 						-- below, which only applies to ailments (like Chill) that genuinely ramp with damage.
 						local incEffect = skillModList:Sum("INC", cfg, "Enemy"..ailment.."Magnitude", "AilmentMagnitude") + enemyDB:Sum("INC", nil, "Self"..ailment.."Magnitude", "AilmentMagnitude")
 						local moreEffect = skillModList:More(cfg, "Enemy"..ailment.."Magnitude", "AilmentMagnitude") * enemyDB:More(nil, "Self"..ailment.."Magnitude", "AilmentMagnitude")
-						output[ailment.."SourceEffect"] = m_min(100, data.gameConstants["Base"..ailment.."Magnitude"] * output[ailment.."EffectMod"])
+						-- Use the same calculated maximum (honoring ShockMax overrides/"+% to Maximum Effect of
+						-- Shock" mods) that CalcPerform.lua already exposes via Maximum<ailment> - not a bare 100 -
+						-- matching the non-flatEffect branch below, which already reads this correctly.
+						local maximum = globalOutput["Maximum"..ailment] or ailmentData[ailment].max
+						output[ailment.."SourceEffect"] = m_min(maximum, data.gameConstants["Base"..ailment.."Magnitude"] * output[ailment.."EffectMod"])
 						breakdown[ailment.."EffectMod"] = { }
 						breakdown.multiChain(breakdown[ailment.."EffectMod"], {
-							label = s_format("Effect of %s:", ailment),
+							label = s_format("Effect of %s: ^8(capped at %d%%)", ailment, maximum),
 							base = { "%d%% ^8(base)", data.gameConstants["Base"..ailment.."Magnitude"] },
 							{ "%.2f ^8(increased/reduced effect)", 1 + incEffect / 100 },
 							{ "%.2f ^8(more/less effect)", moreEffect },

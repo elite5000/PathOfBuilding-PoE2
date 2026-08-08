@@ -2303,6 +2303,20 @@ end
 
 -- List of special modifiers
 local specialModList = {
+	-- Ritual Cadence keystone (src/TreeData/0_5/tree.lua): "Invocation Skills instead Trigger Spells
+	-- every 2 seconds" replaces the Invocation's own cooldown-based activation cadence entirely (see
+	-- metaInvocationTriggerHandler's fixedCadence handling in CalcTriggers.lua) - not modelled as a
+	-- cooldown-recovery adjustment since the keystone's "instead" wording is a hard override, not a
+	-- modifier to the existing cooldown. "Invoked Spells consume 50% less Energy" reuses the existing
+	-- probabilistic MetaEnergyDischargeCostReduceChance stat at chance=100 (a guaranteed 50% reduction
+	-- is exactly what a 100%-chance "consume half as much Energy" roll already models: E[cost] =
+	-- cost*(1-chance/200) = cost*0.5 at chance=100), so no new handler math is needed for this half.
+	-- The keystone's third effect, "Invocation Skills cannot gain Energy while Triggering Spells", is
+	-- deliberately left unparsed/unsupported: PoB's steady-state average-rate model has no notion of a
+	-- discrete "currently triggering" window to pause generation during, and a wrong guess at its
+	-- magnitude would be worse than an honest "not supported" tooltip.
+	["invocation skills instead trigger spells every (%d+) seconds?"] = function(num) return { mod("MetaInvocationFixedCadence", "BASE", num) } end,
+	["invoked spells consume (%d+)%% less energy"] = function(num) return { mod("MetaEnergyDischargeCostReduceChance", "BASE", num * 2, 0, 0, { type = "Condition", var = "InvocationSkill" }) } end,
 	-- Explode mods
 	["enemies you kill have a (%d+)%% chance to explode, dealing a (.+) of their maximum life as (.+) damage"] = function(chance, _, amount, type)	-- Obliteration, Unspeakable Gifts (chaos cluster), synth implicit mod, current crusader body mod, Ngamahu Warmonger tattoo
 		return explodeFunc(chance, amount, type)

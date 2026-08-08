@@ -244,6 +244,41 @@ describe("TestTriggers", function()
 		assert.is_true((build.calcsTab.mainOutput.MetaEnergyTriggerRate or 0) > 0)
 	end)
 
+	it("auto-derived events/sec is rate x hit chance x crit chance x DpsMultiplier, precisely", function()
+		-- findAutoEnergySource now scores/ranks candidates by this same qualifying-rate formula (rate x
+		-- DpsMultiplier x hit chance x crit chance) instead of raw attack speed alone, matching
+		-- CalcOffence.lua's "effective hit rate" shape used everywhere else (e.g. output.HitChance / 100 *
+		-- (HitSpeed or Speed) * output.DpsMultiplier) - a fast-but-inaccurate or multi-hit source no longer
+		-- silently outranks a slower-but-reliable one, and the reported events/sec no longer omits
+		-- DpsMultiplier for multi-hit sources. Only one valid candidate exists in this scenario (so it
+		-- doesn't exercise ranking between multiple candidates) and DpsMultiplier is 1 here (no simple
+		-- real skill/support combo gives a controlled non-1 value without a lot of extra setup) - what
+		-- this locks in precisely is that the formula itself, including the now-present DpsMultiplier
+		-- term, computes correctly: a huge enemy Evasion value tanks Quarterstaff Strike's hit chance to
+		-- a known, exact 5% floor without touching its attack speed or crit chance.
+		equipQuarterstaff()
+		build.configTab.input.enemyEvasion = 500000
+		build.configTab:BuildModList()
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nCast on Critical 1/0  1\nQuarterstaff Strike 20/0  1")
+		build.mainSocketGroup = 1
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		local env = build.calcsTab.mainEnv
+		local qstrike
+		for _, skill in ipairs(env.player.activeSkillList) do
+			if skill.activeEffect.grantedEffect.name == "Quarterstaff Strike" then
+				qstrike = skill
+			end
+		end
+		local cached = GlobalCache.cachedData[env.mode][cacheSkillUUID(qstrike, env)]
+		local expected = (cached.HitSpeed or cached.Speed) * (cached.DpsMultiplier or 1) * (cached.HitChance / 100) * (cached.CritChance / 100)
+
+		assert.are.equals("Comet", env.player.mainSkill.activeEffect.grantedEffect.name)
+		assert.near(5, cached.HitChance, 0.01)
+		assert.near(expected, build.calcsTab.mainOutput.MetaEnergyEventsPerSecond, 0.0001)
+	end)
+
 	it("gives every payload spell in a multi-spell Cast on Critical bundle the same trigger rate", function()
 		-- Comet and Spark are both socketed alongside Cast on Critical, sharing one 370-Energy pool
 		-- (300 + 70, per the "Maximum Energy" test above) filled by Quarterstaff Strike's crits. Since both
@@ -511,6 +546,41 @@ describe("TestTriggers", function()
 		build.calcsTab:BuildOutput()
 
 		assert.near(1 / 0.132, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("overrides Invocation's activation cadence entirely via the Ritual Cadence keystone", function()
+		-- "Invocation Skills instead Trigger Spells every 2 seconds" hard-replaces Reaper's Invocation's own
+		-- 0.2s cooldown (which alone would give 1/0.2 = 5/sec) with a fixed 2s interval -> 0.5/sec, "instead"
+		-- meaning override rather than modify - unaffected by cooldown-recovery mods, unlike Temporalis above.
+		-- Generation kept enormous (1000 kills/sec) so this stays the binding cap, not generationLimitedRate.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab.input.customMods = "Invocation Skills instead Trigger Spells every 2 seconds"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(0.5, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
+	end)
+
+	it("reduces Invocation's discharge cost via the Ritual Cadence keystone's guaranteed 50% Energy reduction", function()
+		-- "Invoked Spells consume 50% less Energy" is a guaranteed (not probabilistic) reduction, reusing
+		-- MetaEnergyDischargeCostReduceChance at chance=100 (see ModParser.lua) - mathematically identical to
+		-- a 100%-chance "consume half as much Energy" roll, so the existing discount math (E[cost] = cost *
+		-- (1 - chance/200)) applies unchanged: Comet's 300 Energy becomes a flat 150. 500 Maximum Energy /
+		-- 150 = floor 3 discharges every 0.2s cooldown (tick-rounded to 0.231s) -> 3 / 0.231.
+		build.skillsTab:PasteSocketGroup("Comet 20/0  1\nReaper's Invocation 1/0  1")
+		build.mainSocketGroup = 1
+		build.configTab.input.enemyIsBoss = "None"
+		build.configTab.input.metaReapersInvocationMeleeKillsPerSecond = 1000
+		build.configTab.input.customMods = "Invoked Spells consume 50% less Energy"
+		build.configTab:BuildModList()
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+
+		assert.near(3 / 0.231, build.calcsTab.mainOutput.MetaEnergyTriggerRate, 0.0001)
 	end)
 
 	it("applies alt-quality Reaper's Invocation's Triggered Damage bonus to the payload's DPS", function()

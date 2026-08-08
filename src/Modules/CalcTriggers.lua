@@ -421,17 +421,17 @@ end
 -- SkillType.Spell (and drops the Attack/Damage requirement, since "cast Spells" doesn't require a hit),
 -- for Spellslinger, which generates Energy from casting rather than hitting.
 --
--- Source search runs in two passes. The first only considers slotMatch-compatible skills (same item
--- slot as the Meta gem). If that finds nothing and the Meta gem's own group has "Include in Full DPS"
--- ticked, a second pass widens the search to every other Full-DPS-ticked group on the build (excluding
--- the Meta gem's own group, already covered by pass one) - this is how a source in a different slot
--- (e.g. a weapon attack when the Meta gem is granted by an amulet) gets found: opting both groups into
--- Full DPS tells PoB they act together. Groups tied to the currently inactive weapon-swap set never
--- reach either pass since they're excluded from actor.activeSkillList entirely (CalcSetup.lua's
--- slotEnabled check). Same-slot results always win over Full-DPS ones when both exist, matching this
--- function's existing "more specific scope wins" precedence (manual override beats auto-detect).
-local function findAutoEnergySource(env, actor, mainSkill, requireMelee, requireSpell)
-	local bestSkill, bestUuid, bestRate
+-- scoreCrit ranks candidates the way Cast on Critical's caller will use them: qualifying rate = raw
+-- rate x DpsMultiplier (multi-hit skills, e.g. multiple projectiles/repeats per use) x hit chance x
+-- crit chance - matching the "effective hit rate" shape CalcOffence.lua uses everywhere else (e.g.
+-- output.HitChance / 100 * (globalOutput.HitSpeed or globalOutput.Speed) * output.DpsMultiplier), not
+-- just the raw attack/cast speed. Without this, a fast-but-inaccurate/low-crit skill could outrank a
+-- slower-but-reliable one despite producing fewer actual qualifying events/sec. autoDetectHit's caller
+-- uses the same shape minus crit chance (scoreCrit left false). requireSpell (Spellslinger) is ranked
+-- by raw cast rate alone - it generates Energy from casting itself, not from hits, so hit chance/crit
+-- chance/DpsMultiplier (which describe hit outcomes per cast, not casts per second) don't apply.
+local function findAutoEnergySource(env, actor, mainSkill, requireMelee, requireSpell, scoreCrit)
+	local bestSkill, bestUuid, bestScore
 	local function considerSkill(skill)
 		if skill ~= mainSkill
 			and (requireSpell and skill.skillTypes[SkillType.Spell] or (not requireSpell and (skill.skillTypes[SkillType.Attack] or skill.skillTypes[SkillType.Damage])))
@@ -443,8 +443,9 @@ local function findAutoEnergySource(env, actor, mainSkill, requireMelee, require
 			end
 			local cached = GlobalCache.cachedData[env.mode][uuid]
 			local rate = cached and (cached.HitSpeed or cached.Speed)
-			if rate and (not bestRate or rate > bestRate) then
-				bestSkill, bestUuid, bestRate = skill, uuid, rate
+			local score = rate and (requireSpell and rate or (rate * (cached.DpsMultiplier or 1) * ((cached.HitChance or 100) / 100) * (scoreCrit and ((cached.CritChance or 0) / 100) or 1)))
+			if score and (not bestScore or score > bestScore) then
+				bestSkill, bestUuid, bestScore = skill, uuid, score
 			end
 		end
 	end
@@ -569,20 +570,22 @@ local function metaEnergyTriggerHandler(env, config)
 	-- Fire Spell on Melee Hit key off plain melee hits, so they don't).
 	local eventsPerSecond = env.build.configTab.input[config.eventsVar] or 0
 	if eventsPerSecond <= 0 and config.autoDetectCrit then
-		local source, uuid = findAutoEnergySource(env, actor, mainSkill)
+		local source, uuid = findAutoEnergySource(env, actor, mainSkill, nil, nil, true)
 		if source and uuid then
 			local cached = GlobalCache.cachedData[env.mode][uuid]
 			local rate = cached.HitSpeed or cached.Speed or 0
+			local dpsMultiplier = cached.DpsMultiplier or 1
 			local hitChance = (cached.HitChance or 100) / 100
 			local critChance = (cached.CritChance or 0) / 100
-			eventsPerSecond = rate * hitChance * critChance
+			eventsPerSecond = rate * dpsMultiplier * hitChance * critChance
 			if breakdown and eventsPerSecond > 0 then
-				breakdown.MetaEnergyEventsPerSecond = {
-					s_format("%.2f ^8(%s hit rate)", rate, source.activeEffect.grantedEffect.name),
-					s_format("x %.2f%% ^8(hit chance)", cached.HitChance or 100),
-					s_format("x %.2f%% ^8(critical strike chance)", cached.CritChance or 0),
-					s_format("= %.2f ^8(critical hits per second)", eventsPerSecond),
-				}
+				breakdown.MetaEnergyEventsPerSecond = { s_format("%.2f ^8(%s hit rate)", rate, source.activeEffect.grantedEffect.name) }
+				if dpsMultiplier ~= 1 then
+					t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f ^8(hits per use)", dpsMultiplier))
+				end
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f%% ^8(hit chance)", cached.HitChance or 100))
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f%% ^8(critical strike chance)", cached.CritChance or 0))
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("= %.2f ^8(critical hits per second)", eventsPerSecond))
 			end
 		end
 	elseif eventsPerSecond <= 0 and config.autoDetectHit then
@@ -590,14 +593,16 @@ local function metaEnergyTriggerHandler(env, config)
 		if source and uuid then
 			local cached = GlobalCache.cachedData[env.mode][uuid]
 			local rate = cached.HitSpeed or cached.Speed or 0
+			local dpsMultiplier = cached.DpsMultiplier or 1
 			local hitChance = (cached.HitChance or 100) / 100
-			eventsPerSecond = rate * hitChance
+			eventsPerSecond = rate * dpsMultiplier * hitChance
 			if breakdown and eventsPerSecond > 0 then
-				breakdown.MetaEnergyEventsPerSecond = {
-					s_format("%.2f ^8(%s hit rate)", rate, source.activeEffect.grantedEffect.name),
-					s_format("x %.2f%% ^8(hit chance)", cached.HitChance or 100),
-					s_format("= %.2f ^8(melee hits per second)", eventsPerSecond),
-				}
+				breakdown.MetaEnergyEventsPerSecond = { s_format("%.2f ^8(%s hit rate)", rate, source.activeEffect.grantedEffect.name) }
+				if dpsMultiplier ~= 1 then
+					t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f ^8(hits per use)", dpsMultiplier))
+				end
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f%% ^8(hit chance)", cached.HitChance or 100))
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("= %.2f ^8(melee hits per second)", eventsPerSecond))
 			end
 		end
 	end
@@ -880,7 +885,12 @@ local function metaInvocationTriggerHandler(env, config)
 	-- calcSkillCooldown helper every other skill's cooldown goes through (CalcOffence.lua) instead of
 	-- reconstructing it manually, so it picks up cooldown overrides, flat CooldownRecoveryFromTemporalis
 	-- reductions (with the correct 0.1s minimum clamp), and server-tick rounding.
-	local cooldown = calcSkillCooldown(metaSkill.skillModList, metaSkill.skillCfg, metaSkill.skillData)
+	--
+	-- Ritual Cadence keystone ("Invocation Skills instead Trigger Spells every 2 seconds") hard-overrides
+	-- this entirely rather than modifying it - "instead" replaces the cooldown-based cadence outright, so
+	-- when present it wins over calcSkillCooldown's result rather than feeding into it.
+	local fixedCadence = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaInvocationFixedCadence")
+	local cooldown = fixedCadence > 0 and fixedCadence or calcSkillCooldown(metaSkill.skillModList, metaSkill.skillCfg, metaSkill.skillData)
 	local cooldownRate = cooldown > 0 and (1 / cooldown) or m_huge
 
 	-- If not even the cheapest achievable discharge (accounting for refund/discount luck) fits in the fixed

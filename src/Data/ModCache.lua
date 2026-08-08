@@ -6033,12 +6033,10 @@ c["Invocated Spells have 40% chance to consume half as much Energy"]={{[1]={[1]=
 c["Invocated skills have 30% increased Maximum Energy"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=0,name="MetaEnergyMaxIncrease",type="INC",value=30}},nil}
 c["Invocation Skills cannot gain Energy while Triggering Spells"]={nil,"Invocation Skills cannot gain Energy while Triggering Spells "}
 c["Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy"]={nil,"Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy "}
-c["Invocation Skills instead Trigger Spells every 2 seconds"]={nil,"Invocation Skills instead Trigger Spells every 2 seconds "}
-c["Invocation Skills instead Trigger Spells every 2 seconds Invocation Skills cannot gain Energy while Triggering Spells"]={nil,"Invocation Skills instead Trigger Spells every 2 seconds Invocation Skills cannot gain Energy while Triggering Spells "}
-c["Invocation Skills instead Trigger Spells every 2 seconds Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy"]={nil,"Invocation Skills instead Trigger Spells every 2 seconds Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy "}
+c["Invocation Skills instead Trigger Spells every 2 seconds"]={{[1]={flags=0,keywordFlags=0,name="MetaInvocationFixedCadence",type="BASE",value=2}},nil}
 c["Invocation Spells have 20% increased Critical Damage Bonus"]={nil,"Invocation Spells have 20% increased Critical Damage Bonus "}
 c["Invocation Spells have 50% increased Critical Damage Bonus"]={nil,"Invocation Spells have 50% increased Critical Damage Bonus "}
-c["Invoked Spells consume 50% less Energy"]={nil,"Invoked Spells consume 50% less Energy "}
+c["Invoked Spells consume 50% less Energy"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=0,name="MetaEnergyDischargeCostReduceChance",type="BASE",value=100}},nil}
 c["Iron Grip"]={{[1]={[1]={div=2,stat="Str",type="PerStat"},flags=2,keywordFlags=0,name="Damage",type="INC",value=1},[2]={flags=0,keywordFlags=0,name="NoStrBonusToLife",type="FLAG",value=true}},nil}
 c["Iron Reflexes"]={{[1]={flags=0,keywordFlags=0,name="Keystone",type="LIST",value="Iron Reflexes"}},nil}
 c["Iron Will"]={{[1]={[1]={div=2,stat="Str",type="PerStat"},flags=1025,keywordFlags=0,name="Damage",type="INC",value=1},[2]={flags=0,keywordFlags=0,name="NoStrBonusToLife",type="FLAG",value=true}},nil}
