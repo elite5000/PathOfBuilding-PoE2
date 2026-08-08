@@ -1420,8 +1420,7 @@ c["119% increased Spell Damage"]={{[1]={flags=2,keywordFlags=0,name="Damage",typ
 c["12 Life Regeneration per second"]={{[1]={flags=0,keywordFlags=0,name="LifeRegen",type="BASE",value=12}},nil}
 c["12 Life Regeneration per second per Socket filled"]={{[1]={[1]={type="Multiplier",var="RunesSocketedIn{SlotName}"},flags=0,keywordFlags=0,name="LifeRegen",type="BASE",value=12}},nil}
 c["12% chance for Spell Skills to fire 2 additional Projectiles"]={{[1]={flags=2,keywordFlags=0,name="TwoAdditionalProjectilesChance",type="BASE",value=12}},nil}
-c["12% chance for Trigger skills to refund half of Energy Spent"]={{}," for Trigger skills to refund half of Energy Spent "}
-c["12% chance for Trigger skills to refund half of Energy Spent 8% increased chance to inflict Ailments"]={{[1]={flags=0,keywordFlags=0,name="AilmentChance",type="BASE",value=12}}," for Trigger skills to refund half of Energy Spent 8% increased  "}
+c["12% chance for Trigger skills to refund half of Energy Spent"]={{[1]={flags=0,keywordFlags=0,name="MetaEnergyRefundChance",type="BASE",value=12}},nil}
 c["12% chance to Blind Enemies on Hit"]={{[1]={flags=0,keywordFlags=0,name="BlindChance",type="BASE",value=12}},nil}
 c["12% chance when collecting an Elemental Infusion to gain an"]={{}," when collecting an Elemental Infusion to gain an "}
 c["12% faster start of Energy Shield Recharge"]={{[1]={flags=0,keywordFlags=0,name="EnergyShieldRechargeFaster",type="INC",value=12}},nil}
@@ -2022,7 +2021,7 @@ c["20% increased Duration of Elemental Ailments on Enemies"]={{[1]={flags=0,keyw
 c["20% increased Effect of Arcane Surge on you per ten percent missing Mana"]={{[1]={flags=0,keywordFlags=0,name="ArcaneSurgeEffect",type="INC",value=20}},"  per ten percent missing Mana "}
 c["20% increased Effect of Puppet Master"]={{[1]={flags=0,keywordFlags=0,name="LocalEffect",type="INC",value=20}},"  of Puppet Master "}
 c["20% increased Effect of your Mark Skills"]={{[1]={[1]={skillType=99,type="SkillType"},flags=0,keywordFlags=0,name="LocalEffect",type="INC",value=20}},nil}
-c["20% increased Elemental Ailment Application if you have Shapeshifted to an Animal form Recently"]={{}," Elemental Ailment Application  "}
+c["20% increased Elemental Ailment Application if you have Shapeshifted to an Animal form Recently"]={{[1]={[1]={type="Condition",var="ShapeshiftToAnimal"},flags=0,keywordFlags=0,name="EnemyFreezeBuildup",type="INC",value=20},[2]={[1]={type="Condition",var="ShapeshiftToAnimal"},flags=0,keywordFlags=0,name="EnemyShockChance",type="INC",value=20},[3]={[1]={type="Condition",var="ShapeshiftToAnimal"},flags=0,keywordFlags=0,name="EnemyIgniteChance",type="INC",value=20}},nil}
 c["20% increased Elemental Ailment Threshold"]={{[1]={flags=0,keywordFlags=0,name="AilmentThreshold",type="INC",value=20}},nil}
 c["20% increased Elemental Damage"]={{[1]={flags=0,keywordFlags=0,name="ElementalDamage",type="INC",value=20}},nil}
 c["20% increased Elemental Damage with Attacks"]={{[1]={flags=0,keywordFlags=65536,name="ElementalDamage",type="INC",value=20}},nil}
@@ -2254,7 +2253,7 @@ c["25% chance for Attacks to Maim on Hit against Poisoned Enemies 25% increased 
 c["25% chance for Lightning Damage with Hits to be Lucky"]={{[1]={flags=0,keywordFlags=0,name="LightningLuckyHitsChance",type="BASE",value=25}},nil}
 c["25% chance for Projectiles to Pierce Enemies within 3m distance of you"]={{[1]={flags=0,keywordFlags=0,name="ProjectileCount",type="BASE",value=25}}," for  to Pierce Enemies within 3m distance of you "}
 c["25% chance for Slam Skills you use yourself to cause an additional Aftershock"]={{}," for Slam Skills you use yourself to cause an additional Aftershock "}
-c["25% chance for Trigger skills to refund half of Energy Spent"]={{}," for Trigger skills to refund half of Energy Spent "}
+c["25% chance for Trigger skills to refund half of Energy Spent"]={{[1]={flags=0,keywordFlags=0,name="MetaEnergyRefundChance",type="BASE",value=25}},nil}
 c["25% chance on Consuming a Shock on an Enemy to reapply it"]={{}," on Consuming a Shock on an Enemy to reapply it "}
 c["25% chance on Shocking Enemies to created Shocked Ground"]={{[1]={[1]={actor="enemy",type="ActorCondition",var="OnShockedGround"},flags=0,keywordFlags=0,name="ShockBase",type="BASE",value=20}},nil}
 c["25% chance that when Volatility on you explodes, you regain an equivalent amount of Volatility"]={{}," that when Volatility on you explodes, you regain an equivalent amount of Volatility "}
@@ -2894,7 +2893,7 @@ c["40% increased Damage with Two Handed Weapons"]={{[1]={flags=34359738372,keywo
 c["40% increased Damage with Warcries"]={{[1]={flags=0,keywordFlags=4,name="Damage",type="INC",value=40}},nil}
 c["40% increased Duration of Poisons you inflict against Slowed Enemies"]={{[1]={[1]={actor="enemy",type="ActorCondition",var="Slowed"},flags=0,keywordFlags=0,name="EnemyPoisonDuration",type="INC",value=40}},nil}
 c["40% increased Electrocute Buildup"]={{[1]={flags=0,keywordFlags=0,name="EnemyElectrocuteBuildup",type="INC",value=40}},nil}
-c["40% increased Elemental Ailment Application if you have Shapeshifted to an Animal form Recently"]={{}," Elemental Ailment Application  "}
+c["40% increased Elemental Ailment Application if you have Shapeshifted to an Animal form Recently"]={{[1]={[1]={type="Condition",var="ShapeshiftToAnimal"},flags=0,keywordFlags=0,name="EnemyFreezeBuildup",type="INC",value=40},[2]={[1]={type="Condition",var="ShapeshiftToAnimal"},flags=0,keywordFlags=0,name="EnemyShockChance",type="INC",value=40},[3]={[1]={type="Condition",var="ShapeshiftToAnimal"},flags=0,keywordFlags=0,name="EnemyIgniteChance",type="INC",value=40}},nil}
 c["40% increased Elemental Ailment Threshold"]={{[1]={flags=0,keywordFlags=0,name="AilmentThreshold",type="INC",value=40}},nil}
 c["40% increased Elemental Damage"]={{[1]={flags=0,keywordFlags=0,name="ElementalDamage",type="INC",value=40}},nil}
 c["40% increased Elemental Damage with Attack Skills during any Flask Effect"]={{[1]={[1]={type="Condition",var="UsingFlask"},flags=0,keywordFlags=65536,name="ElementalDamage",type="INC",value=40}},nil}
@@ -5335,7 +5334,7 @@ c["Enemies you kill while they are affected by Abyssal Wasting 40% increased Imm
 c["Enemies you kill with Empowered Attacks have a 10% chance to Explode, dealing a tenth of their maximum Life as Fire Damage"]={{[1]={flags=0,keywordFlags=0,name="ExplodeMod",type="LIST",value={amount=10,keyOfScaledMod="value",type="Fire",value=10}},[2]={flags=0,keywordFlags=0,name="CanExplode",type="FLAG",value=true}},nil}
 c["Enemies' Damage with Critical Hits against you is Lucky"]={nil,"Enemies' Damage with Critical Hits  is Lucky "}
 c["Enemy Critical Hit Chance against you is Unlucky"]={{[1]={flags=0,keywordFlags=0,name="EnemyUnluckyCrit",type="FLAG",value=true}},nil}
-c["Energy Generation is doubled"]={{},"Energy Generation  "}
+c["Energy Generation is doubled"]={{[1]={[1]={globalLimit=100,globalLimitKey="MetaEnergyGenerationDoubledLimit",type="Multiplier",var="MetaEnergyGenerationDoubled"},flags=0,keywordFlags=0,name="MetaEnergyGeneration",type="MORE",value=100},[2]={flags=0,keywordFlags=0,name="Multiplier:MetaEnergyGenerationDoubled",type="OVERRIDE",value=1}}," Generation  "}
 c["Energy Shield Recharge is not interrupted by Damage if Recharge began Recently"]={nil,"Energy Shield Recharge is not interrupted by Damage if Recharge began Recently "}
 c["Energy Shield Recharge starts on use"]={nil,"Energy Shield Recharge starts on use "}
 c["Energy Shield Recharge starts when you use a Mana Flask"]={nil,"Energy Shield Recharge starts when you use a Mana Flask "}
@@ -5706,17 +5705,17 @@ c["Grants Skill: Apocalypse"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",ty
 c["Grants Skill: Archon of Chayula"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="ArchonOfChayulaPlayer"}}},nil}
 c["Grants Skill: Bleeding Concoction"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="BleedingConcoctionPlayer"}}},nil}
 c["Grants Skill: Blood Boil"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="BloodBoilPlayer"}}},nil}
-c["Grants Skill: Called Shots"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MetaDeadeyeMarksPlayer"}}},nil}
+c["Grants Skill: Called Shots"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MetaDeadeyeMarksPlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=1,skillId="SupportMetaDeadeyeMarksPlayer",sourceGemId="Metadata/Items/Gems/SkillGemMetaDeadeyeMarks"}}},nil}
 c["Grants Skill: Demon Form"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="DemonFormPlayer"}}},nil}
 c["Grants Skill: Elemental Expression"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="ElementalExpressionTriggeredPlayer"}}},nil}
 c["Grants Skill: Elemental Storm"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="ElementalStormPlayer"}}},nil}
 c["Grants Skill: Elemental Surge"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="AmazonTriggerElementalSurgePlayer"}}},nil}
 c["Grants Skill: Encase in Jade"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="EncaseInJadePlayer"}}},nil}
 c["Grants Skill: Explosive Concoction"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="ExplosiveConcoctionPlayer"}}},nil}
-c["Grants Skill: Fire Spell on Hit"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MetaCastFireSpellOnHitPlayer"}}},nil}
+c["Grants Skill: Fire Spell on Hit"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MetaCastFireSpellOnHitPlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=1,skillId="SupportMetaCastFireSpellOnHitPlayer",sourceGemId="Metadata/Items/Gems/SkillGemCastFireSpellOnHit"}}},nil}
 c["Grants Skill: Fulminating Concoction"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="FulminatingConcoctionPlayer"}}},nil}
 c["Grants Skill: Hollow Focus"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="HollowFocusPlayer"}}},nil}
-c["Grants Skill: Hollow Form"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MetaHollowFormPlayer"}}},nil}
+c["Grants Skill: Hollow Form"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MetaHollowFormPlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=1,skillId="SupportHollowFormPlayer",sourceGemId="Metadata/Items/Gems/SkillGemHollowForm"}}},nil}
 c["Grants Skill: Hollow Resonance"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="HollowResonancePlayer"}}},nil}
 c["Grants Skill: Inevitable Agony"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="InevitableAgonyPlayer"}}},nil}
 c["Grants Skill: Into the Breach"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="IntoTheBreachPlayer"}}},nil}
@@ -5731,8 +5730,8 @@ c["Grants Skill: Level 11 Blink"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill
 c["Grants Skill: Level 11 Bone Blast"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="BoneBlastPlayer"}}},nil}
 c["Grants Skill: Level 11 Bursting Fen Toad"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="ExplodingPoisonToadPlayer"}}},nil}
 c["Grants Skill: Level 11 Cackling Companions"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="HyenaCacklePlayer"}}},nil}
-c["Grants Skill: Level 11 Cast on Block"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="MetaCastOnBlockPlayer"}}},nil}
-c["Grants Skill: Level 11 Cast on Charm Use"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="MetaCastOnCharmUsePlayer"}}},nil}
+c["Grants Skill: Level 11 Cast on Block"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="MetaCastOnBlockPlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=11,skillId="SupportMetaCastOnBlockPlayer",sourceGemId="Metadata/Items/Gems/SkillGemCastOnBlock"}}},nil}
+c["Grants Skill: Level 11 Cast on Charm Use"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="MetaCastOnCharmUsePlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=11,skillId="SupportMetaCastOnCharmUsePlayer",sourceGemId="Metadata/Items/Gems/SkillGemCastOnCharmUse"}}},nil}
 c["Grants Skill: Level 11 Chaos Bolt"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="WeaponGrantedChaosboltPlayer"}}},nil}
 c["Grants Skill: Level 11 Chaotic Surge"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="ChaosSpearTriggerChaosSurgePlayer"}}},nil}
 c["Grants Skill: Level 11 Coiling Bolts"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="CoilingBoltsPlayer"}}},nil}
@@ -5779,10 +5778,10 @@ c["Grants Skill: Level 11 Skeletal Warrior Minion"]={{[1]={flags=0,keywordFlags=
 c["Grants Skill: Level 11 Solar Orb"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="SolarOrbPlayer"}}},nil}
 c["Grants Skill: Level 11 Spark"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="SparkPlayer"}}},nil}
 c["Grants Skill: Level 11 Spiraling Conspiracy"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="SummonSpiralingConspiracyPlayer"}}},nil}
-c["Grants Skill: Level 11 Spirit Vessel"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="SpiritVesselPlayer"}}},nil}
+c["Grants Skill: Level 11 Spirit Vessel"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="SpiritVesselPlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=11,skillId="SpiritVesselSupport",sourceGemId="Metadata/Items/Gems/SkillGemSpiritVessel"}}},nil}
 c["Grants Skill: Level 11 Starborn Onslaught"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="StarbornOnslaughtPlayer"}}},nil}
 c["Grants Skill: Level 11 The Stars Answer"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="TheStarsAnswerPlayer"}}},nil}
-c["Grants Skill: Level 11 Thundergod's Wrath"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="MetaCastLightningSpellOnHitPlayer"}}},nil}
+c["Grants Skill: Level 11 Thundergod's Wrath"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="MetaCastLightningSpellOnHitPlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=11,skillId="SupportMetaCastLightningSpellOnHitPlayer",sourceGemId="Metadata/Items/Gems/SkillGemCastLightningSpellOnHit"}}},nil}
 c["Grants Skill: Level 11 Valako's Charge"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="ValakosChargePlayer"}}},nil}
 c["Grants Skill: Level 11 Volatile Dead"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="VolatileDeadPlayer"}}},nil}
 c["Grants Skill: Level 11 Wildwood's Gifts"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=11,skillId="AncientGiftsPlayer"}}},nil}
@@ -5794,8 +5793,8 @@ c["Grants Skill: Level 20 Blink"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill
 c["Grants Skill: Level 20 Bone Blast"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="BoneBlastPlayer"}}},nil}
 c["Grants Skill: Level 20 Bursting Fen Toad"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="ExplodingPoisonToadPlayer"}}},nil}
 c["Grants Skill: Level 20 Cackling Companions"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="HyenaCacklePlayer"}}},nil}
-c["Grants Skill: Level 20 Cast on Block"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="MetaCastOnBlockPlayer"}}},nil}
-c["Grants Skill: Level 20 Cast on Charm Use"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="MetaCastOnCharmUsePlayer"}}},nil}
+c["Grants Skill: Level 20 Cast on Block"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="MetaCastOnBlockPlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=20,skillId="SupportMetaCastOnBlockPlayer",sourceGemId="Metadata/Items/Gems/SkillGemCastOnBlock"}}},nil}
+c["Grants Skill: Level 20 Cast on Charm Use"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="MetaCastOnCharmUsePlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=20,skillId="SupportMetaCastOnCharmUsePlayer",sourceGemId="Metadata/Items/Gems/SkillGemCastOnCharmUse"}}},nil}
 c["Grants Skill: Level 20 Chaos Bolt"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="WeaponGrantedChaosboltPlayer"}}},nil}
 c["Grants Skill: Level 20 Chaotic Surge"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="ChaosSpearTriggerChaosSurgePlayer"}}},nil}
 c["Grants Skill: Level 20 Coiling Bolts"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="CoilingBoltsPlayer"}}},nil}
@@ -5850,10 +5849,10 @@ c["Grants Skill: Level 20 Skeletal Warrior Minion"]={{[1]={flags=0,keywordFlags=
 c["Grants Skill: Level 20 Solar Orb"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="SolarOrbPlayer"}}},nil}
 c["Grants Skill: Level 20 Spark"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="SparkPlayer"}}},nil}
 c["Grants Skill: Level 20 Spiraling Conspiracy"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="SummonSpiralingConspiracyPlayer"}}},nil}
-c["Grants Skill: Level 20 Spirit Vessel"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="SpiritVesselPlayer"}}},nil}
+c["Grants Skill: Level 20 Spirit Vessel"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="SpiritVesselPlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=20,skillId="SpiritVesselSupport",sourceGemId="Metadata/Items/Gems/SkillGemSpiritVessel"}}},nil}
 c["Grants Skill: Level 20 Starborn Onslaught"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="StarbornOnslaughtPlayer"}}},nil}
 c["Grants Skill: Level 20 The Stars Answer"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="TheStarsAnswerPlayer"}}},nil}
-c["Grants Skill: Level 20 Thundergod's Wrath"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="MetaCastLightningSpellOnHitPlayer"}}},nil}
+c["Grants Skill: Level 20 Thundergod's Wrath"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="MetaCastLightningSpellOnHitPlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=20,skillId="SupportMetaCastLightningSpellOnHitPlayer",sourceGemId="Metadata/Items/Gems/SkillGemCastLightningSpellOnHit"}}},nil}
 c["Grants Skill: Level 20 Valako's Charge"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="ValakosChargePlayer"}}},nil}
 c["Grants Skill: Level 20 Volatile Dead"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="VolatileDeadPlayer"}}},nil}
 c["Grants Skill: Level 20 Wildwood's Gifts"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=20,skillId="AncientGiftsPlayer"}}},nil}
@@ -5861,7 +5860,7 @@ c["Grants Skill: Level 20 Withering Presence"]={{[1]={flags=0,keywordFlags=0,nam
 c["Grants Skill: Life Remnants"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="LifeRemnantsPlayer"}}},nil}
 c["Grants Skill: Manifest Weapon"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="ManifestWeaponPlayer"}}},nil}
 c["Grants Skill: Meditate"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MeditatePlayer"}}},nil}
-c["Grants Skill: Mirage Deadeye"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MetaMirageDeadeyePlayer"}}},nil}
+c["Grants Skill: Mirage Deadeye"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MetaMirageDeadeyePlayer"}},[2]={[1]={slotName="{SlotName}",type="SocketedIn"},flags=0,keywordFlags=0,name="ExtraSupport",type="LIST",value={level=1,skillId="SupportMirageDeadeyePlayer",sourceGemId="Metadata/Items/Gems/SkillGemMirageDeadeye"}}},nil}
 c["Grants Skill: Moment of Vulnerability"]={{[1]={flags=0,keywordFlags=0,name="ExtraSkill",type="LIST",value={level=1,skillId="MomentOfVulnerabilityPlayer"}}},nil}
 c["Grants Skill: Navira's Fracturing"]={nil,nil}
 c["Grants Skill: Navira's Oasis"]={nil,nil}
@@ -6030,16 +6029,14 @@ c["Instant Recovery"]={{[1]={flags=0,keywordFlags=0,name="FlaskInstantRecovery",
 c["Invocated Spells deal 15% increased Damage"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=131072,name="Damage",type="INC",value=15}},nil}
 c["Invocated Spells have 12% increased Critical Hit Chance"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=131072,name="CritChance",type="INC",value=12}},nil}
 c["Invocated Spells have 30% increased Critical Hit Chance"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=131072,name="CritChance",type="INC",value=30}},nil}
-c["Invocated Spells have 40% chance to consume half as much Energy"]={{}," to consume half as much Energy "}
-c["Invocated skills have 30% increased Maximum Energy"]={{}," Maximum Energy "}
+c["Invocated Spells have 40% chance to consume half as much Energy"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=131072,name="MetaEnergyDischargeCostReduceChance",type="BASE",value=40}},nil}
+c["Invocated skills have 30% increased Maximum Energy"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=0,name="MetaEnergyMaxIncrease",type="INC",value=30}},nil}
 c["Invocation Skills cannot gain Energy while Triggering Spells"]={nil,"Invocation Skills cannot gain Energy while Triggering Spells "}
 c["Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy"]={nil,"Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy "}
-c["Invocation Skills instead Trigger Spells every 2 seconds"]={nil,"Invocation Skills instead Trigger Spells every 2 seconds "}
-c["Invocation Skills instead Trigger Spells every 2 seconds Invocation Skills cannot gain Energy while Triggering Spells"]={nil,"Invocation Skills instead Trigger Spells every 2 seconds Invocation Skills cannot gain Energy while Triggering Spells "}
-c["Invocation Skills instead Trigger Spells every 2 seconds Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy"]={nil,"Invocation Skills instead Trigger Spells every 2 seconds Invocation Skills cannot gain Energy while Triggering Spells Invoked Spells consume 50% less Energy "}
+c["Invocation Skills instead Trigger Spells every 2 seconds"]={{[1]={flags=0,keywordFlags=0,name="MetaInvocationFixedCadence",type="BASE",value=2}},nil}
 c["Invocation Spells have 20% increased Critical Damage Bonus"]={nil,"Invocation Spells have 20% increased Critical Damage Bonus "}
 c["Invocation Spells have 50% increased Critical Damage Bonus"]={nil,"Invocation Spells have 50% increased Critical Damage Bonus "}
-c["Invoked Spells consume 50% less Energy"]={nil,"Invoked Spells consume 50% less Energy "}
+c["Invoked Spells consume 50% less Energy"]={{[1]={[1]={type="Condition",var="InvocationSkill"},flags=0,keywordFlags=0,name="MetaEnergyDischargeCostReduceChance",type="BASE",value=100}},nil}
 c["Iron Grip"]={{[1]={[1]={div=2,stat="Str",type="PerStat"},flags=2,keywordFlags=0,name="Damage",type="INC",value=1},[2]={flags=0,keywordFlags=0,name="NoStrBonusToLife",type="FLAG",value=true}},nil}
 c["Iron Reflexes"]={{[1]={flags=0,keywordFlags=0,name="Keystone",type="LIST",value="Iron Reflexes"}},nil}
 c["Iron Will"]={{[1]={[1]={div=2,stat="Str",type="PerStat"},flags=1025,keywordFlags=0,name="Damage",type="INC",value=1},[2]={flags=0,keywordFlags=0,name="NoStrBonusToLife",type="FLAG",value=true}},nil}
@@ -6186,16 +6183,13 @@ c["Maximum Volatility is 30"]={{},"Maximum Volatility "}
 c["Maximum amount of Guard is based on maximum Energy Shield instead"]={nil,"Maximum amount of Guard is based on maximum Energy Shield instead "}
 c["Maximum amount of Guard is based on maximum Energy Shield instead Divine Flight"]={nil,"Maximum amount of Guard is based on maximum Energy Shield instead Divine Flight "}
 c["Melee Attack Skills have +1 to maximum number of Summoned Totems"]={{[1]={[1]={skillType=20,type="SkillType"},[2]={skillType=1,type="SkillType"},flags=0,keywordFlags=0,name="ActiveTotemLimit",type="BASE",value=1}},nil}
-c["Meta Skills gain 15% increased Energy"]={nil,"Meta Skills gain 15% increased Energy "}
-c["Meta Skills gain 16% increased Energy"]={nil,"Meta Skills gain 16% increased Energy "}
-c["Meta Skills gain 16% increased Energy 2% increased Cast Speed per 20 Spirit"]={nil,"Meta Skills gain 16% increased Energy 2% increased Cast Speed per 20 Spirit "}
-c["Meta Skills gain 20% increased Energy"]={nil,"Meta Skills gain 20% increased Energy "}
-c["Meta Skills gain 25% increased Energy if you've dealt a Critical Hit Recently"]={nil,"Meta Skills gain 25% increased Energy if you've dealt a Critical Hit Recently "}
-c["Meta Skills gain 35% more Energy"]={nil,"Meta Skills gain 35% more Energy "}
-c["Meta Skills gain 35% more Energy Meta Skills have 50% increased Reservation Efficiency"]={nil,"Meta Skills gain 35% more Energy Meta Skills have 50% increased Reservation Efficiency "}
-c["Meta Skills gain 4% increased Energy"]={nil,"Meta Skills gain 4% increased Energy "}
-c["Meta Skills gain 4% increased Energy 5% increased Critical Hit Chance"]={nil,"Meta Skills gain 4% increased Energy 5% increased Critical Hit Chance "}
-c["Meta Skills gain 8% increased Energy"]={nil,"Meta Skills gain 8% increased Energy "}
+c["Meta Skills gain 15% increased Energy"]={{[1]={[1]={skillType=122,type="SkillType"},flags=0,keywordFlags=0,name="MetaEnergyGeneration",type="INC",value=15}},nil}
+c["Meta Skills gain 16% increased Energy"]={{[1]={[1]={skillType=122,type="SkillType"},flags=0,keywordFlags=0,name="MetaEnergyGeneration",type="INC",value=16}},nil}
+c["Meta Skills gain 20% increased Energy"]={{[1]={[1]={skillType=122,type="SkillType"},flags=0,keywordFlags=0,name="MetaEnergyGeneration",type="INC",value=20}},nil}
+c["Meta Skills gain 25% increased Energy if you've dealt a Critical Hit Recently"]={{[1]={[1]={skillType=122,type="SkillType"},[2]={type="Condition",var="CritRecently"},flags=0,keywordFlags=0,name="MetaEnergyGeneration",type="INC",value=25}},nil}
+c["Meta Skills gain 35% more Energy"]={{[1]={[1]={skillType=122,type="SkillType"},flags=0,keywordFlags=0,name="MetaEnergyGeneration",type="MORE",value=35}},nil}
+c["Meta Skills gain 4% increased Energy"]={{[1]={[1]={skillType=122,type="SkillType"},flags=0,keywordFlags=0,name="MetaEnergyGeneration",type="INC",value=4}},nil}
+c["Meta Skills gain 8% increased Energy"]={{[1]={[1]={skillType=122,type="SkillType"},flags=0,keywordFlags=0,name="MetaEnergyGeneration",type="INC",value=8}},nil}
 c["Meta Skills have 20% increased Reservation Efficiency"]={{[1]={[1]={skillType=122,type="SkillType"},flags=0,keywordFlags=0,name="ReservationEfficiency",type="INC",value=20}},nil}
 c["Meta Skills have 50% increased Reservation Efficiency"]={{[1]={[1]={skillType=122,type="SkillType"},flags=0,keywordFlags=0,name="ReservationEfficiency",type="INC",value=50}},nil}
 c["Mind Over Matter"]={{[1]={flags=0,keywordFlags=0,name="Keystone",type="LIST",value="Mind Over Matter"}},nil}

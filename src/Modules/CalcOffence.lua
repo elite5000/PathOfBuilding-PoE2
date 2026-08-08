@@ -5060,6 +5060,36 @@ function calcs.offence(env, actor, activeSkill)
 
 			globalOutput[ailment .. "ChancePerHit"] = output[ailment .. "ChanceOnHit"] * (1 - output.CritChance / 100) + output[ailment .. "ChanceOnCrit"] * output.CritChance / 100
 
+			-- Ignite (unlike Poison/Bleed) accumulates a separate "Flammability" chance-to-ignite value from
+			-- each Fire hit, stacking with other still-active instances (each lasting BaseFlammabilityDuration
+			-- seconds) before the current hit rolls against the combined total. PoB only models the single-hit
+			-- contribution above; this estimates the sustained steady-state total for fast-hitting builds,
+			-- as an additional informational output - it does not feed into IgniteDPS or any other calculation.
+			if ailment == "Ignite" then
+				-- Effective hit rate, matching the "output.HitChance / 100 * (HitSpeed or Speed) *
+				-- output.DpsMultiplier" shape used everywhere else in this file - raw attack/cast speed alone
+				-- overstates this for inaccurate attacks (not every use lands) and understates it for
+				-- multi-hit skills (each use rolls Flammability contributions from more than one hit).
+				local rawRate = globalOutput.HitSpeed or globalOutput.Speed or 0
+				local dpsMultiplier = globalOutput.DpsMultiplier or 1
+				local hitRate = rawRate * dpsMultiplier * (output.HitChance or 100) / 100
+				if hitRate > 0 then
+					globalOutput.IgniteChanceSteadyState = m_min(100, globalOutput.IgniteChancePerHit * hitRate * data.gameConstants.BaseFlammabilityDuration)
+					if breakdown then
+						breakdown.IgniteChanceSteadyState = { }
+						breakdown.multiChain(breakdown.IgniteChanceSteadyState, {
+							label = "Sustained Ignite chance ^8(estimated steady-state Flammability stacking):",
+							base = { "%.1f%% ^8(chance per hit)", globalOutput.IgniteChancePerHit },
+							{ "%.2f ^8(hit rate)", rawRate },
+							{ "%.2f ^8(hits per use)", dpsMultiplier },
+							{ "%.2f%% ^8(hit chance)", output.HitChance or 100 },
+							{ "%.1f ^8(seconds a Flammability instance remains active)", data.gameConstants.BaseFlammabilityDuration },
+							total = s_format("= %.0f%% ^8(capped at 100%%)", globalOutput.IgniteChanceSteadyState)
+						})
+					end
+				end
+			end
+
 			-- We will be using a weighted average calculation
 			local maxStacks = 1
 			if skillModList:Flag(skillCfg, ailment .. "CanStack") then
@@ -5510,11 +5540,11 @@ function calcs.offence(env, actor, activeSkill)
 				thresh = function(damage, value, effectMod) return damage * (data.gameConstants.ChillEffectMultiplier * effectMod / value) end,
 				ramping = false,
 			},
+			-- Unlike Chill, Shock's effect in PoE2 is a flat base (data.gameConstants.BaseShockMagnitude)
+			-- scaled only by "Magnitude of Shock" mods - it does not ramp with hit damage, so it doesn't fit
+			-- the damage-vs-threshold table model below; see the flatEffect branch it's routed to instead.
 			["Shock"] = {
-				effList = { 10, 20, 40 },
-				effect = function(damage, effectMod) return 50 * ((damage / enemyThreshold) ^ 0.4) * effectMod end,
-				thresh = function(damage, value, effectMod) return damage * ((50 * effectMod / value) ^ 2.5) end,
-				ramping = true,
+				flatEffect = true,
 			},
 		}
 		if activeSkill.skillTypes[SkillType.ChillingArea] or activeSkill.skillTypes[SkillType.NonHitChill] then
@@ -5528,7 +5558,7 @@ function calcs.offence(env, actor, activeSkill)
 				breakdown.DotChill = { }
 				breakdown.multiChain(breakdown.DotChill, {
 					label = s_format("Effect of Chill: ^8(capped at %d%%)", skillModList:Override(nil, "ChillMax") or ailmentData.Chill.max),
-					base = s_format("%d%% ^8(base)", ailmentData.Chill.default),
+					base = { "%d%% ^8(base)", ailmentData.Chill.default },
 					{ "%.2f ^8(increased/reduced effect of chill)", 1 + incChill / 100 },
 					{ "%.2f ^8(more/less effect of chill)", moreChill },
 					total = s_format("= %.0f%%", output.ChillSourceEffect)
@@ -5564,7 +5594,26 @@ function calcs.offence(env, actor, activeSkill)
 					local moreDur = skillModList:More(cfg, "Enemy"..ailment.."Duration", "EnemyElementalAilmentDuration", "EnemyAilmentDuration") * enemyDB:More(nil, "Self"..ailment.."Duration", "SelfElementalAilmentDuration", "SelfAilmentDuration")
 					output[ailment.."Duration"] = ailmentData[ailment].duration * (1 + incDur / 100) * moreDur * debuffDurationMult
 					output[ailment.."EffectMod"] = calcLib.mod(skillModList, cfg, "Enemy"..ailment.."Magnitude", "AilmentMagnitude") * calcLib.mod(enemyDB, cfg, "Self"..ailment.."Magnitude", "AilmentMagnitude")
-					if breakdown then
+					if breakdown and val.flatEffect then
+						-- Shock's effect doesn't ramp with hit damage in PoE2 (only its chance does), so it's
+						-- shown as a flat base-times-magnitude breakdown instead of the damage/threshold table
+						-- below, which only applies to ailments (like Chill) that genuinely ramp with damage.
+						local incEffect = skillModList:Sum("INC", cfg, "Enemy"..ailment.."Magnitude", "AilmentMagnitude") + enemyDB:Sum("INC", nil, "Self"..ailment.."Magnitude", "AilmentMagnitude")
+						local moreEffect = skillModList:More(cfg, "Enemy"..ailment.."Magnitude", "AilmentMagnitude") * enemyDB:More(nil, "Self"..ailment.."Magnitude", "AilmentMagnitude")
+						-- Use the same calculated maximum (honoring ShockMax overrides/"+% to Maximum Effect of
+						-- Shock" mods) that CalcPerform.lua already exposes via Maximum<ailment> - not a bare 100 -
+						-- matching the non-flatEffect branch below, which already reads this correctly.
+						local maximum = globalOutput["Maximum"..ailment] or ailmentData[ailment].max
+						output[ailment.."SourceEffect"] = m_min(maximum, data.gameConstants["Base"..ailment.."Magnitude"] * output[ailment.."EffectMod"])
+						breakdown[ailment.."EffectMod"] = { }
+						breakdown.multiChain(breakdown[ailment.."EffectMod"], {
+							label = s_format("Effect of %s: ^8(capped at %d%%)", ailment, maximum),
+							base = { "%d%% ^8(base)", data.gameConstants["Base"..ailment.."Magnitude"] },
+							{ "%.2f ^8(increased/reduced effect)", 1 + incEffect / 100 },
+							{ "%.2f ^8(more/less effect)", moreEffect },
+							total = s_format("= %.0f%%", output[ailment.."SourceEffect"])
+						})
+					elseif breakdown then
 						local maximum = globalOutput["Maximum"..ailment] or ailmentData[ailment].max
 						local current = m_max(m_min(globalOutput["Current"..ailment] or 0, maximum), 0)
 						local desired = m_max(m_min(enemyDB:Sum("BASE", nil, "Desired"..ailment.."Val"), maximum), 0)

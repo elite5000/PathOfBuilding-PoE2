@@ -270,6 +270,43 @@ describe("TestSkills", function()
 		end)
 	end)
 
+	it("does not crash rendering socket tooltip for a payload spell linked to an item-granted Meta skill's hidden support", function()
+		-- The synthesized support effect for a Meta gem's hidden trigger-support (added to a same-item-slot
+		-- payload's effectList via CalcSetup.lua's ExtraSupport handling) has no srcInstance (it isn't tied
+		-- to a real gem slot) - AddSocketGroupTooltip's active-skill line must tolerate that the same way it
+		-- already tolerates a missing srcInstance for level/quality/corrupt just below it. It also has no
+		-- gemData unless CalcSetup.lua's ExtraSupport handling passes the granting gem's own data through
+		-- (ModParser.lua's sourceGemData) - without it, the tooltip's color lookup silently renders as the
+		-- literal text "nil" prepended directly to the skill name (e.g. "nilSupportMetaCastOnCritPlayer").
+		-- With that fixed, the line still showed the hidden support's own raw internal name
+		-- ("SupportMetaCastOnCritPlayer") instead of a real display name, since it has no srcInstance to read
+		-- a nameSpec from either - falls back to the granting gem's own gemData.name ("Cast on Critical")
+		-- instead, matching the name shown for a normally-socketed copy of this same hidden companion.
+		build.itemsTab:CreateDisplayItemFromRaw("New Item\nAbsent Amulet\nImplicits: 1\nGrants Skill: Level 20 Cast on Critical\n")
+		build.itemsTab:AddDisplayItem()
+		build.skillsTab:PasteSocketGroup("Slot: Amulet\nComet 20/0  1\n")
+		runCallback("OnFrame")
+
+		local socketGroup = build.skillsTab.socketGroupList[1]
+		local lines = {}
+		local tooltip = {
+			AddLine = function(_, size, text) table.insert(lines, text) end,
+			AddSeparator = function() end,
+		}
+		assert.has_no.errors(function()
+			build.skillsTab:AddSocketGroupTooltip(tooltip, socketGroup)
+		end)
+		local foundCastOnCritical = false
+		for _, line in ipairs(lines) do
+			assert.is_nil(line:find("^nil", 1, false), "tooltip line should not start with the literal text 'nil': " .. line)
+			assert.is_nil(line:find("SupportMetaCastOnCritPlayer", 1, true), "tooltip line should not show the raw internal skill id: " .. line)
+			if line:find("Cast on Critical", 1, true) then
+				foundCastOnCritical = true
+			end
+		end
+		assert.is_true(foundCastOnCritical, "expected a tooltip line naming 'Cast on Critical'")
+	end)
+
 	it("does not crash when importing a character with a minion main skill and passive tree (issue #2243)", function()
 		-- Reproduces the exact bug scenario: ImportItemsAndSkills adds a minion
 		-- skill, ImportPassiveTreeAndJewels triggers a rebuild, and OnFrame must
@@ -1177,6 +1214,35 @@ describe("TestSkills", function()
 		assert.are.equals(60, build.calcsTab.mainEnv.enemyDB:Sum("BASE", nil, "FireExposure"))
 		assert.are.equals(20, build.calcsTab.mainEnv.enemyDB:Sum("BASE", nil, "FireResist"))
 		assert.True(build.calcsTab.mainEnv.enemyDB:Flag(nil, "Condition:HasExposure"))
+	end)
+
+	it("syncs Include in Full DPS across every group in the same item slot when toggled via the checkbox", function()
+		-- Multiple socket groups can share one item slot (e.g. a weapon with several linked gem clusters).
+		-- Ticking "Include in Full DPS" on one should tick it for all of them - the whole point of the flag
+		-- is "this slot's skills act together", so per-group toggling within one slot is just friction.
+		-- Groups in a DIFFERENT slot (or no slot at all) must not be affected.
+		build.skillsTab:PasteSocketGroup("Slot: Weapon 1\nFireball 20/0  1\n")
+		local weapon1GroupA = build.skillsTab.socketGroupList[#build.skillsTab.socketGroupList]
+		build.skillsTab:PasteSocketGroup("Slot: Weapon 1\nSpark 20/0  1\n")
+		local weapon1GroupB = build.skillsTab.socketGroupList[#build.skillsTab.socketGroupList]
+		build.skillsTab:PasteSocketGroup("Slot: Amulet\nComet 20/0  1\n")
+		local amuletGroup = build.skillsTab.socketGroupList[#build.skillsTab.socketGroupList]
+		build.skillsTab:PasteSocketGroup("Frost Wall 20/0  1\n")
+		local unslottedGroup = build.skillsTab.socketGroupList[#build.skillsTab.socketGroupList]
+
+		build.skillsTab:SetDisplayGroup(weapon1GroupA)
+		build.skillsTab.controls.includeInFullDPS.changeFunc(true)
+
+		assert.is_true(weapon1GroupA.includeInFullDPS)
+		assert.is_true(weapon1GroupB.includeInFullDPS)
+		assert.is_falsy(amuletGroup.includeInFullDPS)
+		assert.is_falsy(unslottedGroup.includeInFullDPS)
+
+		build.skillsTab:SetDisplayGroup(weapon1GroupB)
+		build.skillsTab.controls.includeInFullDPS.changeFunc(false)
+
+		assert.is_false(weapon1GroupA.includeInFullDPS)
+		assert.is_false(weapon1GroupB.includeInFullDPS)
 	end)
 
 	describe("Combo stacking", function()

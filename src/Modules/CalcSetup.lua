@@ -1749,7 +1749,13 @@ function calcs.initEnv(build, mode, override, specEnv)
 
 				-- if not unique item that provides skills
 				if not group.source then
-					-- Add extra supports from the item this group is socketed in
+					-- Add extra supports from the item this group is socketed in. Uses addBestSupport (not a
+					-- raw insert) to dedupe by grantedEffect, matching the other ExtraSupport-consuming
+					-- blocks below (cross-linked / unique-item-slot) - env.modDB:List can return the same
+					-- ExtraSupport mod more than once for a single "Grants Skill: X" line (a pre-existing
+					-- double-parse quirk), which without dedup here manifests as the granted skill's own
+					-- hidden trigger-support getting added twice, tripping the "supported by more than one
+					-- trigger" skill-disable check in CalcActiveSkill.lua.
 					for _, value in ipairs(env.modDB:List(groupCfg, "ExtraSupport")) do
 						local grantedEffect = env.data.skills[value.skillId]
 						-- Some skill gems share the same name as support gems, e.g. Barrage.
@@ -1760,15 +1766,22 @@ function calcs.initEnv(build, mode, override, specEnv)
 						end
 						grantedEffect.fromItem = true
 						if grantedEffect then
+							local supportEffect = {
+								grantedEffect = grantedEffect,
+								-- sourceGemId (set by ModParser.lua's grantedExtraSkill for a Meta gem's hidden
+								-- trigger-support companion): that support's own name is an internal ID matching
+								-- no real gem base name, so the usual name-based lookup below would leave gemData
+								-- nil (and the tooltip's color lookup silently rendering as literal "nil" text) -
+								-- prefer a fresh lookup of the granting gem's own data when the caller supplies its
+								-- data.gems key.
+								gemData = (value.sourceGemId and env.data.gems[value.sourceGemId]) or env.data.gems[env.data.gemForBaseName[grantedEffect.name:lower()] or env.data.gemForBaseName[(grantedEffect.name .. " Support"):lower()]],
+								level = value.level,
+								quality = 0,
+								enabled = true,
+								isSupporting = { },
+							}
 							for _, targetList in ipairs(targetListList) do
-								t_insert(targetList, {
-									grantedEffect = grantedEffect,
-									gemData = env.data.gems[env.data.gemForBaseName[grantedEffect.name:lower()] or env.data.gemForBaseName[(grantedEffect.name .. " Support"):lower()]],
-									level = value.level,
-									quality = 0,
-									enabled = true,
-									isSupporting = { },
-								})
+								addBestSupport(supportEffect, targetList, env.mode)
 							end
 						end
 					end

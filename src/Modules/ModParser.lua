@@ -233,6 +233,23 @@ local modNameList = {
 	["reservation efficiency of skills"] = "ReservationEfficiency",
 	["mana reservation efficiency"] = "ManaReservationEfficiency",
 	["life reservation efficiency"] = "LifeReservationEfficiency",
+	-- Meta gem (Cast on X) Energy mechanic, e.g. "Meta Skills gain 15% increased Energy". The bare "energy"
+	-- catch-all below also matches unrelated real mods that happen to contain the word "Energy" without
+	-- being about generation rate at all - these longer, more specific entries take priority over it via
+	-- scan()'s longest-match rule.
+	-- "Invocated skills have X% increased Maximum Energy" scales the fixed Energy pool, not generation.
+	["maximum energy"] = "MetaEnergyMaxIncrease",
+	-- Probabilistic Energy-refund/discount mods ("chance to consume half as much Energy", "chance to
+	-- refund half of Energy Spent"). Both parse as BASE (the "chance" form doesn't set a mod type), summed
+	-- like every other Chance stat (BleedChance, EvadeChance, ...) rather than read via calcLib.mod, and are
+	-- modeled in CalcTriggers.lua as a steady-state expected-value cost reduction: E[cost] = cost*(1 -
+	-- chance/200), the same formula whether the chance is a post-spend refund or a pre-spend discount.
+	-- "consume half as much Energy" is Invocation-only per its own wording (gated by Condition:InvocationSkill
+	-- via the "invocated spells have" prefix above); "refund half of Energy Spent" says generic "Trigger
+	-- skills" and applies to both auto-fire Meta gems and Invocation.
+	["to consume half as much energy"] = "MetaEnergyDischargeCostReduceChance",
+	["for trigger skills to refund half of energy spent"] = "MetaEnergyRefundChance",
+	["energy"] = "MetaEnergyGeneration",
 	-- Primary defences
 	["maximum energy shield"] = "EnergyShield",
 	["energy shield recharge rate"] = "EnergyShieldRecharge",
@@ -846,6 +863,9 @@ local modNameList = {
 	-- Other ailments
 	["chance to inflict ailments"] = "AilmentChance",
 	["chance to inflict elemental ailments"] = { "EnemyIgniteChance", "EnemyShockChance" },
+	-- Patch 0.5.0 consolidated Freeze Buildup, Shock Chance and Flammability (Ignite) Magnitude into this
+	-- single stat name; Freeze has no chance stat, so it maps to buildup instead of a (nonexistent) chance.
+	["elemental ailment application"] = { "EnemyFreezeBuildup", "EnemyShockChance", "EnemyIgniteChance" },
 	["to poison"] = "PoisonChance",
 	["to cause poison"] = "PoisonChance",
 	["to poison on hit"] = "PoisonChance",
@@ -1327,7 +1347,7 @@ local preFlagList = {
 	["^aura skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.Aura } },
 	["^prismatic skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.RandomElement } },
 	["^retaliation skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.Retaliation } },
-	["^meta skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.Meta } },
+	["^meta skills [hdg][ae][vai][eln] "] = { tag = { type = "SkillType", skillType = SkillType.Meta } },
 	["^invocated skills [hd][ae][va][el] "] = { tag = { type = "Condition", var = "InvocationSkill" } },
 	["^invocated spells [hd][ae][va][el] "] = { keywordFlags = KeywordFlag.Spell, tag = { type = "Condition", var = "InvocationSkill" } },
 	["^slam skills [hd][ae][va][el] "] = { tag = { type = "SkillType", skillType = SkillType.Slam } },
@@ -2172,18 +2192,46 @@ for id in pairs(data.gems) do
 end
 table.sort(gems)
 local gemIdLookup = { }
+local gemDataLookup = { }
+local gemKeyLookup = { }
 for _, gem in ipairs(gems) do
 	local gemData = data.gems[gem]
 	local grantedEffect = gemData.grantedEffect
 	local gemName = grantedEffect.fromItem and grantedEffect.baseTypeName and grantedEffect.baseTypeName:lower() or gemData.name:lower()
 	gemIdLookup[gemName] = grantedEffect.id
+	gemDataLookup[gemName] = gemData
+	gemKeyLookup[gemName] = gem
 end
 local function grantedExtraSkill(name, level, noSupports)
 	name = name:gsub(" skill","")
 	if gemIdLookup[name] then
-		return {
+		local mods = {
 			mod("ExtraSkill", "LIST", { skillId = gemIdLookup[name], level = tonumber(level), noSupports = noSupports })
 		}
+		-- Some granted skills (e.g. Meta gems like Cast on Critical) have a hidden companion support gem
+		-- (gemData.additionalGrantedEffects) that's normally auto-included whenever the gem is physically
+		-- socketed (Data.lua builds this list from the gem's additionalGrantedEffectIdN fields) - an
+		-- item-granted skill needs that same companion, tagged to the item's own slot ({SlotName}, resolved
+		-- in Item.lua), so it reaches payload skills socketed in a *different* group of the same item, the
+		-- same way a physically-socketed Meta gem's hidden support already reaches skills in its own group.
+		if not noSupports then
+			local gemData = gemDataLookup[name]
+			if gemData and gemData.additionalGrantedEffects then
+				for i, additional in ipairs(gemData.additionalGrantedEffects) do
+					if additional.support then
+						-- sourceGemId: the hidden companion's own skill definition has no display color (it's
+						-- never meant to be shown on its own) and its internal name never matches a real gem base
+						-- name, so CalcSetup.lua's usual name-based gemData lookup for ExtraSupport mods fails for
+						-- it - pass the *granting* gem's own data.gems key through (not the gemData table itself,
+						-- which contains cycles that break copyTable's deep-copy) so CalcSetup.lua can look it up
+						-- fresh and give the synthesized support effect the same color/icon a physically-socketed
+						-- copy of this hidden companion would inherit.
+						t_insert(mods, mod("ExtraSupport", "LIST", { skillId = gemData["additionalGrantedEffectId"..i], level = tonumber(level), sourceGemId = gemKeyLookup[name] }, { type = "SocketedIn", slotName = "{SlotName}" }))
+					end
+				end
+			end
+		end
+		return mods
 	end
 end
 local function triggerExtraSkill(name, level, options)
@@ -2255,6 +2303,20 @@ end
 
 -- List of special modifiers
 local specialModList = {
+	-- Ritual Cadence keystone (src/TreeData/0_5/tree.lua): "Invocation Skills instead Trigger Spells
+	-- every 2 seconds" replaces the Invocation's own cooldown-based activation cadence entirely (see
+	-- metaInvocationTriggerHandler's fixedCadence handling in CalcTriggers.lua) - not modelled as a
+	-- cooldown-recovery adjustment since the keystone's "instead" wording is a hard override, not a
+	-- modifier to the existing cooldown. "Invoked Spells consume 50% less Energy" reuses the existing
+	-- probabilistic MetaEnergyDischargeCostReduceChance stat at chance=100 (a guaranteed 50% reduction
+	-- is exactly what a 100%-chance "consume half as much Energy" roll already models: E[cost] =
+	-- cost*(1-chance/200) = cost*0.5 at chance=100), so no new handler math is needed for this half.
+	-- The keystone's third effect, "Invocation Skills cannot gain Energy while Triggering Spells", is
+	-- deliberately left unparsed/unsupported: PoB's steady-state average-rate model has no notion of a
+	-- discrete "currently triggering" window to pause generation during, and a wrong guess at its
+	-- magnitude would be worse than an honest "not supported" tooltip.
+	["invocation skills instead trigger spells every (%d+) seconds?"] = function(num) return { mod("MetaInvocationFixedCadence", "BASE", num) } end,
+	["invoked spells consume (%d+)%% less energy"] = function(num) return { mod("MetaEnergyDischargeCostReduceChance", "BASE", num * 2, 0, 0, { type = "Condition", var = "InvocationSkill" }) } end,
 	-- Explode mods
 	["enemies you kill have a (%d+)%% chance to explode, dealing a (.+) of their maximum life as (.+) damage"] = function(chance, _, amount, type)	-- Obliteration, Unspeakable Gifts (chaos cluster), synth implicit mod, current crusader body mod, Ngamahu Warmonger tattoo
 		return explodeFunc(chance, amount, type)

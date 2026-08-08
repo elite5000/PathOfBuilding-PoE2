@@ -29,6 +29,24 @@ local function addTriggerIncMoreMods(activeSkill, sourceSkill)
 	end
 end
 
+-- Same conversion as addTriggerIncMoreMods, for the Meta/Invocation gems' custom trigger handlers. Unlike a
+-- normal trigger-support gem (whose own stats, including any TriggeredDamage grant, propagate onto its
+-- supported skill's own modList via the standard support-to-supported mechanism, so activeSkill and
+-- sourceSkill are the same modList there), a Meta/Invocation gem's alt-quality "Triggered Skills deal X%
+-- increased Damage" stat is declared on the visible Meta/Invocation skill itself, not the hidden per-payload
+-- support - so the TriggeredDamage mod lives on metaSkill's own modList, never mainSkill's. The
+-- SkillType.Triggered tag it carries still needs to be matched against mainSkill's cfg (the hidden support
+-- gives every payload that flag), so the read and write sides can't share one skill the way
+-- addTriggerIncMoreMods assumes.
+local function addMetaTriggerIncMoreMods(mainSkill, metaSkill)
+	for _, value in ipairs(metaSkill.skillModList:Tabulate("INC", mainSkill.skillCfg, "TriggeredDamage")) do
+		mainSkill.skillModList:NewMod("Damage", "INC", value.mod.value, value.mod.source, value.mod.flags, value.mod.keywordFlags, unpack(value.mod))
+	end
+	for _, value in ipairs(metaSkill.skillModList:Tabulate("MORE", mainSkill.skillCfg, "TriggeredDamage")) do
+		mainSkill.skillModList:NewMod("Damage", "MORE", value.mod.value, value.mod.source, value.mod.flags, value.mod.keywordFlags, unpack(value.mod))
+	end
+end
+
 local function slotMatch(env, skill)
 	local fromItem = (env.player.mainSkill.activeEffect.grantedEffect.fromItem or skill.activeEffect.grantedEffect.fromItem)
 	fromItem = fromItem or (env.player.mainSkill.activeEffect.srcInstance and env.player.mainSkill.activeEffect.srcInstance.fromItem) or (skill.activeEffect.srcInstance and skill.activeEffect.srcInstance.fromItem)
@@ -378,6 +396,627 @@ local function CWCHandler(env)
 			env.player.mainSkill.infoMessage = triggerName .."'s Trigger: ".. source.activeEffect.grantedEffect.name
 			env.player.infoTrigger = env.player.mainSkill.infoTrigger or triggerName
 		end
+	end
+end
+
+-- Auto-derive events/sec (Cast on Critical only, currently) from a self-cast, non-triggered Attack/Damage
+-- skill in the same socket group, using its cached hit rate and hit/crit chance. This is the closest
+-- analogue to the legacy PoE1 "cast on critical strike" self-cast source lookup (see the
+-- ["cast on critical strike"] / "mjolner" entries below); PoB has no confirmed rule yet for which skill's
+-- hits count towards a Meta gem's Energy, so this is a reasonable default pending in-game validation.
+-- Written as a self-contained scan (not calcs.findTriggerSkill/defaultComparer) because those read
+-- skill.skillFlags directly, which - like actor.mainSkill.skillFlags before it - isn't populated under
+-- the current stat-set skill architecture; see metaEnergyTriggerHandler below for the working equivalent.
+--
+-- Freeze/Shock auto-derivation was attempted and pulled back: this engine doesn't give either of them a
+-- clean per-hit chance the way Crit has. Shock's chance is gated behind ailment-eligibility checks keyed
+-- on the skill's own damage-type tags (CalcOffence.lua's canDoAilment) that never resolved true in
+-- testing even for a natively Lightning-tagged attack with a real weapon; Freeze isn't a per-hit chance
+-- at all in this engine - it's a buildup/threshold mechanic (see CalcOffence.lua's
+-- "Freeze"/"Electrocute"/"HeavyStun"/"Pin" poise-buildup loop, the same model Heavy Stun uses). Both need
+-- dedicated follow-up work, not a naive "reuse the Crit shape" attempt, so for now Freeze/Shock/Ignite all
+-- require the manual Stage 1 override, same as Ignite always did.
+-- requireMelee restricts candidates to SkillType.Melee, for Meta gems that only generate Energy from
+-- melee hits specifically (Thundergod's Wrath, Fire Spell on Melee Hit). requireSpell restricts to
+-- SkillType.Spell (and drops the Attack/Damage requirement, since "cast Spells" doesn't require a hit),
+-- for Spellslinger, which generates Energy from casting rather than hitting.
+--
+-- scoreCrit ranks candidates the way Cast on Critical's caller will use them: qualifying rate = raw
+-- rate x DpsMultiplier (multi-hit skills, e.g. multiple projectiles/repeats per use) x hit chance x
+-- crit chance - matching the "effective hit rate" shape CalcOffence.lua uses everywhere else (e.g.
+-- output.HitChance / 100 * (globalOutput.HitSpeed or globalOutput.Speed) * output.DpsMultiplier), not
+-- just the raw attack/cast speed. Without this, a fast-but-inaccurate/low-crit skill could outrank a
+-- slower-but-reliable one despite producing fewer actual qualifying events/sec. autoDetectHit's caller
+-- uses the same shape minus crit chance (scoreCrit left false). requireSpell (Spellslinger) is ranked
+-- by raw cast rate alone - it generates Energy from casting itself, not from hits, so hit chance/crit
+-- chance/DpsMultiplier (which describe hit outcomes per cast, not casts per second) don't apply.
+local function findAutoEnergySource(env, actor, mainSkill, requireMelee, requireSpell, scoreCrit)
+	local bestSkill, bestUuid, bestScore
+	local function considerSkill(skill)
+		if skill ~= mainSkill
+			and (requireSpell and skill.skillTypes[SkillType.Spell] or (not requireSpell and (skill.skillTypes[SkillType.Attack] or skill.skillTypes[SkillType.Damage])))
+			and (not requireMelee or skill.skillTypes[SkillType.Melee])
+			and not skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
+			local uuid = cacheSkillUUID(skill, env)
+			if not GlobalCache.cachedData[env.mode][uuid] then
+				calcs.buildActiveSkill(env, env.mode, skill, uuid)
+			end
+			local cached = GlobalCache.cachedData[env.mode][uuid]
+			local rate = cached and (cached.HitSpeed or cached.Speed)
+			local score = rate and (requireSpell and rate or (rate * (cached.DpsMultiplier or 1) * ((cached.HitChance or 100) / 100) * (scoreCrit and ((cached.CritChance or 0) / 100) or 1)))
+			if score and (not bestScore or score > bestScore) then
+				bestSkill, bestUuid, bestScore = skill, uuid, score
+			end
+		end
+	end
+	for _, skill in ipairs(actor.activeSkillList) do
+		if slotMatch(env, skill) then
+			considerSkill(skill)
+		end
+	end
+	if not bestSkill and mainSkill.socketGroup and mainSkill.socketGroup.includeInFullDPS then
+		for _, skill in ipairs(actor.activeSkillList) do
+			if skill.socketGroup and skill.socketGroup.includeInFullDPS and skill.socketGroup ~= mainSkill.socketGroup then
+				considerSkill(skill)
+			end
+		end
+	end
+	return bestSkill, bestUuid
+end
+
+-- Cast on Elemental Ailment covers three sub-events sharing one Energy pool; metaCoEAAilmentType (a
+-- ConfigOptions selector) picks which one a given build is generating Energy from, and which of these
+-- three constants applies. None of the three currently auto-derive (see findAutoEnergySource above for
+-- why) - all require the manual Stage 1 events/sec override.
+local autoDetectAilmentInfo = {
+	Freeze = { energyStat = "MetaEnergyPerEventFreeze" },
+	Shock = { energyStat = "MetaEnergyPerEventShock" },
+	Ignite = { energyStat = "MetaEnergyPerEventIgnite" },
+}
+
+-- Shared by metaEnergyTriggerHandler (Cast on Elemental Ailment) and metaInvocationTriggerHandler
+-- (Elemental Invocation) - both gems expose the same Freeze/Shock/Ignite selector and constant shape.
+local function resolveAilmentEnergyStat(env, config)
+	if not config.ailmentTypeVar then return nil, nil end
+	local ailmentType = env.build.configTab.input[config.ailmentTypeVar] or "Freeze"
+	return ailmentType, autoDetectAilmentInfo[ailmentType]
+end
+
+-- Both metaEnergyTriggerHandler and metaInvocationTriggerHandler report a rate for whichever socketed
+-- spell is currently selected as mainSkill. If that specific spell has its own inherent cooldown
+-- (independent of the Meta/Invocation Energy mechanic - e.g. a spell with a native activation cooldown),
+-- it can't fire faster than that even when the group's Energy-based discharge-attempt rate would allow it.
+local function mainSkillCooldownRate(mainSkill)
+	local cooldown = calcSkillCooldown(mainSkill.skillModList, mainSkill.skillCfg, mainSkill.skillData)
+	return cooldown > 0 and (1 / cooldown) or m_huge
+end
+
+-- Shared handler for PoE2 Meta gems (Cast on Critical, Cast on Elemental Ailment, Cast on Dodge,
+-- Cast on Minion Death, Cast on Melee Kill, Cast on Melee Stun, Cast on Block, Cast on Charm Use).
+-- All of these share the Energy mechanic: every spell socketed alongside the Meta gem adds to a
+-- shared maximum-Energy pool, qualifying events add Energy, and every socketed spell triggers
+-- together once the pool is filled. See docs/New Feature - Meta Skills/ for the underlying research.
+--
+-- The qualifying-event rate is a manual per-build input (config.eventsVar) by default; some gems
+-- (config.autoDetectCrit / config.autoDetectHit, see findAutoEnergySource below) instead auto-derive it
+-- from a self-cast source skill's combat outputs, falling back to the manual input if no source is found
+-- or the input is explicitly set (a manual value always takes precedence over auto-derivation).
+local function metaEnergyTriggerHandler(env, config)
+	local actor = config.actor
+	local output = actor.output
+	local breakdown = actor.breakdown
+	local mainSkill = actor.mainSkill
+	-- Per-instance skill flags live on the active skill's stat set, not directly on the skill object.
+	local skillFlags = env.mode == "CALCS" and mainSkill.activeEffect.statSetCalcs.skillFlags or mainSkill.activeEffect.statSet.skillFlags
+
+	-- Find the Meta gem itself (e.g. "Cast on Critical") socketed in the same group; it carries the
+	-- Energy-generation stats (energy_generated_+%, the per-event centienergy constant(s)). Uses slotMatch
+	-- (not a bare socketGroup comparison) so this also finds an item-granted Meta skill, which lives in its
+	-- own dedicated socket group (SkillsTab.lua) separate from wherever the payload spells are pasted, even
+	-- though both are "socketed in the same item" - the same item-slot matching the generic trigger system
+	-- already uses elsewhere in this file (Mjolner, CoC support, etc.).
+	local metaSkill
+	for _, skill in ipairs(actor.activeSkillList) do
+		if slotMatch(env, skill) and skill.skillModList:Flag(skill.skillCfg, "MetaEnergySumSocketedSkills") then
+			metaSkill = skill
+			break
+		end
+	end
+
+	if not metaSkill then
+		mainSkill.skillData.triggered = nil
+		mainSkill.infoMessage2 = "DPS reported assuming Self-Cast"
+		mainSkill.infoMessage = s_format("%s not found in socket group", config.triggerName or "Meta gem")
+		mainSkill.infoTrigger = ""
+		return
+	end
+
+	-- Maximum Energy is the sum of every socketed spell's cost: 100 * base cast/attack time,
+	-- plus flat "Total Cast/Attack Time" additions counted at double value (general Energy rule).
+	local energyMax = 0
+	local spellCosts = {}
+	local costBreakdown = breakdown and {}
+	for _, skill in ipairs(actor.activeSkillList) do
+		if slotMatch(env, skill) and skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
+			local costRateMs = skill.skillModList:Sum("BASE", skill.skillCfg, "MetaEnergyCostRateMs")
+			if costRateMs and costRateMs > 0 then
+				local baseTime = (skill.skillData.castTimeOverride or skill.activeEffect.grantedEffect.castTime or 0) + skill.skillModList:Sum("BASE", skill.skillCfg, "Speed")
+				local totalTime = skill.skillModList:Sum("BASE", skill.skillCfg, "TotalCastTime") + skill.skillModList:Sum("BASE", skill.skillCfg, "TotalAttackTime")
+				local cost = ((baseTime * 1000) + (totalTime * 1000 * 2)) / costRateMs
+				energyMax = energyMax + cost
+				t_insert(spellCosts, cost)
+				if costBreakdown then
+					t_insert(costBreakdown, s_format("%.1f ^8Energy (%s: %.2fs base%s)", cost, skill.activeEffect.grantedEffect.name, baseTime, totalTime > 0 and s_format(" + 2x%.2fs Total Cast Time", totalTime) or ""))
+				end
+			end
+		end
+	end
+
+	-- Maximum Energy is always exposed, even before the manual rate inputs below are filled in.
+	output.MetaEnergyMax = energyMax
+	skillFlags.metaEnergyTriggered = true
+	if breakdown then
+		breakdown.MetaEnergyMax = costBreakdown
+		t_insert(breakdown.MetaEnergyMax, s_format("= %.1f ^8Total Maximum Energy", energyMax))
+	end
+
+	-- Which per-event Energy stat applies: static per gem, except Cast on Elemental Ailment which reads
+	-- its Freeze/Shock/Ignite selector to pick one of the three constants sharing this gem.
+	local ailmentType, ailmentInfo = resolveAilmentEnergyStat(env, config)
+	local energyPerEventStat = (ailmentInfo and ailmentInfo.energyStat) or config.energyPerEventStat
+
+	-- Qualifying events/sec: manual override if set, otherwise auto-derived from a self-cast source
+	-- skill's hit rate (Cast on Critical additionally multiplies by crit chance; Thundergod's Wrath /
+	-- Fire Spell on Melee Hit key off plain melee hits, so they don't).
+	local eventsPerSecond = env.build.configTab.input[config.eventsVar] or 0
+	if eventsPerSecond <= 0 and config.autoDetectCrit then
+		local source, uuid = findAutoEnergySource(env, actor, mainSkill, nil, nil, true)
+		if source and uuid then
+			local cached = GlobalCache.cachedData[env.mode][uuid]
+			local rate = cached.HitSpeed or cached.Speed or 0
+			local dpsMultiplier = cached.DpsMultiplier or 1
+			local hitChance = (cached.HitChance or 100) / 100
+			local critChance = (cached.CritChance or 0) / 100
+			eventsPerSecond = rate * dpsMultiplier * hitChance * critChance
+			if breakdown and eventsPerSecond > 0 then
+				breakdown.MetaEnergyEventsPerSecond = { s_format("%.2f ^8(%s hit rate)", rate, source.activeEffect.grantedEffect.name) }
+				if dpsMultiplier ~= 1 then
+					t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f ^8(hits per use)", dpsMultiplier))
+				end
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f%% ^8(hit chance)", cached.HitChance or 100))
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f%% ^8(critical strike chance)", cached.CritChance or 0))
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("= %.2f ^8(critical hits per second)", eventsPerSecond))
+			end
+		end
+	elseif eventsPerSecond <= 0 and config.autoDetectHit then
+		local source, uuid = findAutoEnergySource(env, actor, mainSkill, true)
+		if source and uuid then
+			local cached = GlobalCache.cachedData[env.mode][uuid]
+			local rate = cached.HitSpeed or cached.Speed or 0
+			local dpsMultiplier = cached.DpsMultiplier or 1
+			local hitChance = (cached.HitChance or 100) / 100
+			eventsPerSecond = rate * dpsMultiplier * hitChance
+			if breakdown and eventsPerSecond > 0 then
+				breakdown.MetaEnergyEventsPerSecond = { s_format("%.2f ^8(%s hit rate)", rate, source.activeEffect.grantedEffect.name) }
+				if dpsMultiplier ~= 1 then
+					t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f ^8(hits per use)", dpsMultiplier))
+				end
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("x %.2f%% ^8(hit chance)", cached.HitChance or 100))
+				t_insert(breakdown.MetaEnergyEventsPerSecond, s_format("= %.2f ^8(melee hits per second)", eventsPerSecond))
+			end
+		end
+	end
+
+	-- Energy per qualifying event: manual override if set, otherwise the gem's own constant,
+	-- scaled by monster Power (for the events that are "per monster Power" - Crit, Elemental Ailment,
+	-- Melee Kill, Melee Stun) and by "Meta Skills gain X% increased/more Energy" mods on the Meta gem.
+	local energyPerEventOverride = env.build.configTab.input[config.energyPerEventVar]
+	local energyPerEventBase = (energyPerEventOverride and energyPerEventOverride > 0) and energyPerEventOverride
+		or (energyPerEventStat and metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, energyPerEventStat)) or 0
+	if config.powerScaled then
+		local enemyPower = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "Multiplier:EnemyPower")
+		energyPerEventBase = energyPerEventBase * ((enemyPower and enemyPower > 0) and enemyPower or 1)
+	end
+	local generationMult = calcLib.mod(metaSkill.skillModList, metaSkill.skillCfg, "MetaEnergyGeneration")
+	local energyPerEvent = energyPerEventBase * generationMult
+
+	if eventsPerSecond <= 0 or energyMax <= 0 or energyPerEvent <= 0 then
+		mainSkill.skillData.triggered = nil
+		mainSkill.infoMessage2 = "DPS reported assuming Self-Cast"
+		mainSkill.infoMessage = s_format("Set %s's qualifying events/Energy-per-event in the Configuration tab", config.triggerName or "Meta gem")
+		mainSkill.infoTrigger = ""
+		return
+	end
+
+	-- "X% chance for Trigger skills to refund half of Energy Spent" belongs to each socketed spell's own
+	-- Energy spend, rolled independently - not one shared roll against the combined pool. For a multi-spell
+	-- bundle this produces more than two possible totals (e.g. two spells: both refund, only one refunds
+	-- either way, or neither), built here by convolving each spell's own two-outcome distribution in turn.
+	-- The long-run average events-per-trigger is the chance-weighted average of ceil(total/energyPerEvent)
+	-- across all resulting branches - not ceil of the averaged total - since rounding doesn't commute with
+	-- averaging.
+	local refundChance = m_min(100, metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyRefundChance"))
+	local refundProb = refundChance / 100
+	local eventsToTriggerFull = m_ceil(energyMax / energyPerEvent)
+	local energyDist = { { value = 0, prob = 1 } }
+	if refundProb > 0 then
+		for _, cost in ipairs(spellCosts) do
+			local nextDist = {}
+			for _, branch in ipairs(energyDist) do
+				t_insert(nextDist, { value = branch.value + cost, prob = branch.prob * (1 - refundProb) })
+				t_insert(nextDist, { value = branch.value + cost * 0.5, prob = branch.prob * refundProb })
+			end
+			energyDist = nextDist
+		end
+	else
+		energyDist = { { value = energyMax, prob = 1 } }
+	end
+	local eventsToTrigger = 0
+	for _, branch in ipairs(energyDist) do
+		eventsToTrigger = eventsToTrigger + branch.prob * m_ceil(branch.value / energyPerEvent)
+	end
+	local energyLimitedRate = eventsPerSecond / eventsToTrigger
+	local cooldownCap = mainSkillCooldownRate(mainSkill)
+	local triggerRate = m_min(energyLimitedRate, cooldownCap)
+
+	-- Account for Trigger-related INC/MORE modifiers (e.g. alt-quality "Triggered Skills deal X% increased
+	-- Damage" on the Meta gem itself) - see addMetaTriggerIncMoreMods for why this isn't the generic
+	-- addTriggerIncMoreMods (the mod lives on metaSkill's own modList, not mainSkill's).
+	addMetaTriggerIncMoreMods(mainSkill, metaSkill)
+	mainSkill.skillData.triggered = true
+	mainSkill.skillData.triggerRate = triggerRate
+	mainSkill.infoMessage = config.triggerName
+	mainSkill.infoTrigger = config.triggerName
+	output.MetaEnergyPerEvent = energyPerEvent
+	output.MetaEnergyEventsToTrigger = eventsToTrigger
+	output.MetaEnergyEventsPerSecond = eventsPerSecond
+	output.MetaEnergyTriggerRate = triggerRate
+
+	if breakdown then
+		if refundProb > 0 then
+			breakdown.MetaEnergyEventsToTrigger = {
+				s_format("%.1f ^8(Maximum Energy)", energyMax),
+				s_format("%.1f%% ^8chance per socketed spell to refund half its Energy Spent (rolled independently)", refundChance),
+				s_format("= %.2f ^8(chance-weighted average events needed per trigger)", eventsToTrigger),
+			}
+		else
+			breakdown.MetaEnergyEventsToTrigger = {
+				s_format("%.1f ^8(Maximum Energy)", energyMax),
+				s_format("/ %.2f ^8(Energy per qualifying event)", energyPerEvent),
+				s_format("= %.2f, rounded up to %d ^8(qualifying events needed per trigger)", energyMax / energyPerEvent, eventsToTriggerFull),
+			}
+		end
+		breakdown.EffectiveSourceRate = {
+			s_format("%.2f ^8(qualifying events per second%s)", eventsPerSecond, breakdown.MetaEnergyEventsPerSecond and ", auto-derived (see above)" or ", from Configuration tab"),
+			s_format("/ %.2f ^8(qualifying events needed per trigger)", eventsToTrigger),
+			s_format("= %.2f ^8(Energy-limited trigger rate)", energyLimitedRate),
+		}
+		if cooldownCap < energyLimitedRate then
+			t_insert(breakdown.EffectiveSourceRate, s_format("min(%.2f, %.2f) ^8(Energy-limited, capped by %s's own cooldown)", energyLimitedRate, cooldownCap, mainSkill.activeEffect.grantedEffect.name))
+			t_insert(breakdown.EffectiveSourceRate, s_format("= %.2f ^8(%s trigger rate)", triggerRate, config.triggerName or "Meta gem"))
+		end
+	end
+end
+
+-- Invocation Meta skills (Barrier Invocation, proof of concept for Stage 6 - see the Stage 6 plan notes)
+-- don't auto-fire at maximum Energy; the player manually activates a real cooldown-gated skill, which
+-- discharges banked Energy to trigger socketed spells, possibly multiple times per activation if enough
+-- Energy is banked. Reported as a steady-state average rate (matching every other rate PoB reports),
+-- bounded by whichever is more restrictive: how fast the Invocation can be activated (its own cooldown),
+-- or how fast Energy regenerates relative to one full discharge's cost:
+--   triggerRate = min(1 / cooldown, generationRatePerSecond / totalSocketedSpellCost)
+-- This intentionally elides burst/reservoir-depletion behavior (how many discharges can chain back-to-back
+-- before Energy runs dry) - a documented approximation, same as Stage 1's manual-rate model was.
+local function metaInvocationTriggerHandler(env, config)
+	local actor = config.actor
+	local output = actor.output
+	local breakdown = actor.breakdown
+	local mainSkill = actor.mainSkill
+	local skillFlags = env.mode == "CALCS" and mainSkill.activeEffect.statSetCalcs.skillFlags or mainSkill.activeEffect.statSet.skillFlags
+
+	-- Find the Invocation skill itself, carrying the fixed Maximum Energy and generation stats. Uses
+	-- slotMatch (see the equivalent comment in metaEnergyTriggerHandler) so item-granted Invocation skills
+	-- still find their payload spells, even when those live in a separate socket group.
+	local metaSkill
+	for _, skill in ipairs(actor.activeSkillList) do
+		if slotMatch(env, skill) and skill.skillModList:Sum("BASE", skill.skillCfg, "MetaEnergyMax") > 0 then
+			metaSkill = skill
+			break
+		end
+	end
+
+	if not metaSkill then
+		mainSkill.skillData.triggered = nil
+		mainSkill.infoMessage2 = "DPS reported assuming Self-Cast"
+		mainSkill.infoMessage = s_format("%s not found in socket group", config.triggerName or "Invocation")
+		mainSkill.infoTrigger = ""
+		return
+	end
+
+	-- Cost of one full discharge: same per-socketed-spell cost formula as the auto-fire Meta gems, just
+	-- summed here for "what one discharge consumes" rather than "what fills the (separately fixed) pool".
+	local totalSocketedSpellCost = 0
+	local spellCosts = {}
+	local costBreakdown = breakdown and {}
+	for _, skill in ipairs(actor.activeSkillList) do
+		if slotMatch(env, skill) and skill.skillModList:Flag(skill.skillCfg, "TriggeredByMetaEnergy") then
+			local costRateMs = skill.skillModList:Sum("BASE", skill.skillCfg, "MetaEnergyCostRateMs")
+			if costRateMs and costRateMs > 0 then
+				local baseTime = (skill.skillData.castTimeOverride or skill.activeEffect.grantedEffect.castTime or 0) + skill.skillModList:Sum("BASE", skill.skillCfg, "Speed")
+				local totalTime = skill.skillModList:Sum("BASE", skill.skillCfg, "TotalCastTime") + skill.skillModList:Sum("BASE", skill.skillCfg, "TotalAttackTime")
+				local cost = ((baseTime * 1000) + (totalTime * 1000 * 2)) / costRateMs
+				totalSocketedSpellCost = totalSocketedSpellCost + cost
+				t_insert(spellCosts, cost)
+				if costBreakdown then
+					t_insert(costBreakdown, s_format("%.1f ^8Energy (%s: %.2fs base%s)", cost, skill.activeEffect.grantedEffect.name, baseTime, totalTime > 0 and s_format(" + 2x%.2fs Total Cast Time", totalTime) or ""))
+				end
+			end
+		end
+	end
+
+	-- "Invocated skills have X% increased Maximum Energy" scales the fixed pool itself (MetaEnergyMaxIncrease),
+	-- distinct from "Meta Skills gain X% increased Energy" (MetaEnergyGeneration), which scales generation
+	-- rate. The mod is tagged Condition:InvocationSkill (matching "Invocated Spells deal/have..." mods
+	-- elsewhere), which nothing in the calc engine sets automatically for SkillType.Invocation skills - use
+	-- a config-scoped copy so it reads true here without mutating the Invocation's real skillCfg/mod list.
+	-- "Invocated Spells have..." mods (as opposed to "Invocated skills have...") are additionally tagged
+	-- keywordFlags=Spell by the "invocated spells have" prefix (ModParser.lua), since those mods are meant to
+	-- apply within a Spell's own calculation context - add that bit here too so Sum()'s MatchKeywordFlags
+	-- check doesn't reject them when read via the Invocation skill's own (non-Spell-tagged) cfg.
+	local invocationCfg = copyTable(metaSkill.skillCfg, true)
+	invocationCfg.skillCond = setmetatable({ InvocationSkill = true }, { __index = metaSkill.skillCfg.skillCond })
+	invocationCfg.keywordFlags = bor(metaSkill.skillCfg.keywordFlags, KeywordFlag.Spell)
+	local energyMaxBase = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyMax")
+	local energyMaxMult = calcLib.mod(metaSkill.skillModList, invocationCfg, "MetaEnergyMaxIncrease")
+	local energyMax = energyMaxBase * energyMaxMult
+	output.MetaEnergyMax = energyMax
+	skillFlags.metaEnergyTriggered = true
+	if breakdown then
+		breakdown.MetaEnergyMax = costBreakdown
+		if energyMaxMult ~= 1 then
+			t_insert(breakdown.MetaEnergyMax, s_format("%.1f ^8(fixed Maximum Energy)", energyMaxBase))
+			t_insert(breakdown.MetaEnergyMax, s_format("x %.2f ^8(increased/more Maximum Energy)", energyMaxMult))
+			t_insert(breakdown.MetaEnergyMax, s_format("= %.1f ^8Energy cost of one discharge", totalSocketedSpellCost))
+		else
+			t_insert(breakdown.MetaEnergyMax, s_format("= %.1f ^8Energy cost of one discharge (fixed Maximum Energy: %.1f)", totalSocketedSpellCost, energyMax))
+		end
+	end
+
+	-- "X% chance for Trigger skills to refund half of Energy Spent" (generic, from either Meta or Invocation
+	-- sources) and "Invocated Spells have X% chance to consume half as much Energy" (Invocation-only, reads
+	-- the same Condition:InvocationSkill-scoped invocationCfg as MetaEnergyMaxIncrease above) both reduce to
+	-- the same expected-value multiplier on the cost of one discharge; independent, so their multipliers
+	-- combine multiplicatively. energyMax (the pool cap) is unaffected - refund/discount affects spending,
+	-- not how much can be banked.
+	local refundChance = m_min(100, metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaEnergyRefundChance"))
+	local discountChance = m_min(100, metaSkill.skillModList:Sum("BASE", invocationCfg, "MetaEnergyDischargeCostReduceChance"))
+	local refundDiscountMult = (1 - refundChance / 200) * (1 - discountChance / 200)
+	local effectiveDischargeCost = totalSocketedSpellCost * refundDiscountMult
+	if breakdown and refundDiscountMult ~= 1 then
+		breakdown.MetaEnergyDischargeCost = {
+			s_format("%.1f ^8(Energy cost of one discharge)", totalSocketedSpellCost),
+			s_format("x %.3f ^8(chance-weighted Energy refund/discount)", refundDiscountMult),
+			s_format("= %.2f ^8(effective Energy cost per discharge)", effectiveDischargeCost),
+		}
+	end
+
+	-- Per-discharge cost distribution - shared by the "structurally impossible" guard below and the burst
+	-- DP further down. The discount is rolled independently for each socketed spell (each spell's own
+	-- cost is its own discount roll, not one shared roll for the whole bundle - a bundle-level roll would
+	-- treat a multi-spell payload as if it were a single spell, understating the spread of possible
+	-- totals), the same convolution metaEnergyTriggerHandler's refund fix uses (see spellCosts there).
+	-- A refund is then rolled once per discharge attempt (only if it succeeds), against whatever gross
+	-- total the discount convolution landed on - it only returns Energy after the full, possibly
+	-- already-discounted, gross cost has been paid, so unlike the discount it isn't a per-spell property.
+	local pRefund, pDischargeDiscount = refundChance / 100, discountChance / 100
+	local grossDist = { { value = totalSocketedSpellCost, prob = 1 } }
+	if pDischargeDiscount > 0 then
+		for _, cost in ipairs(spellCosts) do
+			local nextDist = {}
+			for _, branch in ipairs(grossDist) do
+				t_insert(nextDist, { value = branch.value, prob = branch.prob * (1 - pDischargeDiscount) })
+				t_insert(nextDist, { value = branch.value - cost * 0.5, prob = branch.prob * pDischargeDiscount })
+			end
+			grossDist = nextDist
+		end
+	end
+	local dischargeOutcomes = {}
+	for _, g in ipairs(grossDist) do
+		t_insert(dischargeOutcomes, { gross = g.value, net = g.value, prob = g.prob * (1 - pRefund) })
+		if pRefund > 0 then
+			t_insert(dischargeOutcomes, { gross = g.value, net = g.value * 0.5, prob = g.prob * pRefund })
+		end
+	end
+	-- The reservoir DP below needs gross/net expressed as small integer multiples of one shared unit to
+	-- recurse over. With a single socketed spell that unit is exactly a quarter of its cost, same as
+	-- before; with several spells of different costs, no single unit evenly divides every combination of
+	-- full/half-discounted totals, so this rounds to the nearest quarter of the *cheapest* socketed
+	-- spell - exact for equal or simply-related costs, a small (sub-Energy-unit) approximation otherwise.
+	local unit = m_min(unpack(spellCosts)) * 0.25
+	local minGrossQuarters = m_huge
+	for _, o in ipairs(dischargeOutcomes) do
+		o.grossQuarters = m_floor(o.gross / unit + 0.5)
+		o.netQuarters = m_floor(o.net / unit + 0.5)
+		if o.prob > 0 and o.grossQuarters < minGrossQuarters then
+			minGrossQuarters = o.grossQuarters
+		end
+	end
+	local quarterCost = unit
+	-- Only a discount can ever lower what's needed to attempt a discharge - a refund never can (see above).
+	local minAffordableQuarters = minGrossQuarters
+
+	-- Generation rate: manual input (config.generationRateVar), converted to Energy/sec one of three ways
+	-- depending on the gem, then scaled by "Meta Skills gain X% increased/more Energy" mods on the
+	-- Invocation itself. config.generationDivisorStat: input is a continuous quantity (e.g. Barrier
+	-- Invocation's "ES damage taken/sec"), divided by the gem's own divisor constant.
+	-- config.generationEnergyPerEventStat: input is an event rate (e.g. Reaper's Invocation's "melee
+	-- kills/sec"), multiplied by the gem's own per-event constant (optionally scaled by monster Power,
+	-- same as the auto-fire Meta gems' powerScaled handling).
+	-- config.generationPerCastTimeStat (Spellslinger): Energy per cast depends on the caster's own base
+	-- cast time, so this auto-detects a self-cast Spell in the group the same way Cast on Critical does
+	-- (findAutoEnergySource), and uses its cast rate (or the manual override, if set) x its own base cast
+	-- time x the gem's per-cast-time-second constant. A source skill is always needed for its base cast
+	-- time, even when the rate itself is manually overridden.
+	local generationInput = env.build.configTab.input[config.generationRateVar] or 0
+	local generationMult = calcLib.mod(metaSkill.skillModList, metaSkill.skillCfg, "MetaEnergyGeneration")
+	local generationRatePerSecond = 0
+	if config.generationDivisorStat then
+		local divisor = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, config.generationDivisorStat)
+		generationRatePerSecond = (divisor and divisor > 0) and (generationInput / divisor) * generationMult or 0
+	elseif config.generationEnergyPerEventStat then
+		local perEvent = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, config.generationEnergyPerEventStat) or 0
+		if config.generationPowerScaled then
+			local enemyPower = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "Multiplier:EnemyPower")
+			perEvent = perEvent * ((enemyPower and enemyPower > 0) and enemyPower or 1)
+		end
+		generationRatePerSecond = generationInput * perEvent * generationMult
+	elseif config.generationPerCastTimeStat then
+		local perCastTimeSecond = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, config.generationPerCastTimeStat) or 0
+		if generationInput > 0 then
+			-- Manual override always takes precedence (matching every other Meta gem's manual-rate input),
+			-- and this field is documented (ConfigOptions.lua: "Energy generated/sec") as a final Energy/sec
+			-- value, not a casts/sec rate to be decomposed - used directly, not run back through
+			-- generationMult, which would double up any Energy-generation modifiers the player already
+			-- accounted for when entering the number.
+			generationRatePerSecond = generationInput
+		else
+			-- Auto-detection needs a self-cast, non-triggered Spell in the same group - but Spellslinger's
+			-- own hidden support attaches to every compatible Triggerable spell in that same group, so a
+			-- genuine "self-cast, untriggered Spell" companion essentially never exists there in practice.
+			-- Attempted as best-effort for the rare case a valid source does exist.
+			local source, uuid = findAutoEnergySource(env, actor, mainSkill, false, true)
+			if source and uuid then
+				local cached = GlobalCache.cachedData[env.mode][uuid]
+				local sourceBaseCastTime = source.activeEffect.grantedEffect.castTime or 0
+				local castRate = (cached and (cached.HitSpeed or cached.Speed)) or 0
+				generationRatePerSecond = castRate * sourceBaseCastTime * perCastTimeSecond * 100 * generationMult
+				if breakdown and generationRatePerSecond > 0 then
+					breakdown.MetaEnergyEventsPerSecond = {
+						s_format("%.2f ^8(%s cast rate)", castRate, source.activeEffect.grantedEffect.name),
+						s_format("x %.2fs ^8(%s base cast time)", sourceBaseCastTime, source.activeEffect.grantedEffect.name),
+						s_format("x %.2f ^8(Energy generated per second of base cast time)", perCastTimeSecond * 100),
+						s_format("= %.2f ^8(Energy generated per second)", generationRatePerSecond),
+					}
+				end
+			end
+		end
+	elseif config.ailmentTypeVar then
+		-- Elemental Invocation: same Freeze/Shock/Ignite selector and per-event constants as Cast on
+		-- Elemental Ailment (Stage 3), just feeding this handler's discharge model instead.
+		local ailmentType, ailmentInfo = resolveAilmentEnergyStat(env, config)
+		local perEvent = (ailmentInfo and metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, ailmentInfo.energyStat)) or 0
+		local enemyPower = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "Multiplier:EnemyPower")
+		perEvent = perEvent * ((enemyPower and enemyPower > 0) and enemyPower or 1)
+		generationRatePerSecond = generationInput * perEvent * generationMult
+	end
+
+	-- The Invocation's own activation cooldown, independent of any config input. Uses the same
+	-- calcSkillCooldown helper every other skill's cooldown goes through (CalcOffence.lua) instead of
+	-- reconstructing it manually, so it picks up cooldown overrides, flat CooldownRecoveryFromTemporalis
+	-- reductions (with the correct 0.1s minimum clamp), and server-tick rounding.
+	--
+	-- Ritual Cadence keystone ("Invocation Skills instead Trigger Spells every 2 seconds") hard-overrides
+	-- this entirely rather than modifying it - "instead" replaces the cooldown-based cadence outright, so
+	-- when present it wins over calcSkillCooldown's result rather than feeding into it.
+	local fixedCadence = metaSkill.skillModList:Sum("BASE", metaSkill.skillCfg, "MetaInvocationFixedCadence")
+	local cooldown = fixedCadence > 0 and fixedCadence or calcSkillCooldown(metaSkill.skillModList, metaSkill.skillCfg, metaSkill.skillData)
+	local cooldownRate = cooldown > 0 and (1 / cooldown) or m_huge
+
+	-- If not even the cheapest achievable discharge (accounting for refund/discount luck) fits in the fixed
+	-- Maximum Energy pool, no discharge can ever occur - a build-configuration problem distinct from "rate
+	-- not set yet", reported with its own message rather than falling through to a positive trigger rate via
+	-- generationLimitedRate's unbounded continuous-pool assumption.
+	local oversizedPayload = m_floor(energyMax / quarterCost) < minAffordableQuarters
+	if generationRatePerSecond <= 0 or totalSocketedSpellCost <= 0 or oversizedPayload then
+		mainSkill.skillData.triggered = nil
+		mainSkill.infoMessage2 = "DPS reported assuming Self-Cast"
+		mainSkill.infoMessage = oversizedPayload
+			and s_format("%s's socketed spells cost more Energy than its Maximum Energy pool can hold", config.triggerName or "Invocation")
+			or s_format("Set %s's Energy generation rate in the Configuration tab", config.triggerName or "Invocation")
+		mainSkill.infoTrigger = ""
+		return
+	end
+
+	local generationLimitedRate = generationRatePerSecond / effectiveDischargeCost
+
+	-- A single Invocation activation can chain multiple discharges at once if Energy has banked up faster
+	-- than the cooldown drains it ("triggers spells... a number of times based on the amount of energy
+	-- used") - not just one discharge per activation. Energy banked between activations is capped at the
+	-- fixed Maximum Energy pool (energyMax); generation beyond that between two activations is wasted, same
+	-- "excess is discarded" rule the auto-fire gems already use.
+	--
+	-- With refund/discount chances present, each discharge within the chain independently rolls its own
+	-- gross/net outcome - floor(reservoir / E[cost]) is biased (a bad roll on an early discharge can block a
+	-- later one that would otherwise have fit), so this is computed exactly via a DP over the reservoir
+	-- discretized into quarters, using the dischargeOutcomes/quarterCost distribution already derived above
+	-- for the oversized-payload guard.
+	local burstRate = m_huge
+	local dischargesPerActivation = 0
+	if cooldown > 0 then
+		local energyPerActivation = m_min(generationRatePerSecond * cooldown, energyMax)
+		local maxQuarters = m_floor(energyPerActivation / quarterCost)
+		local expectedDischarges = { [0] = 0 }
+		for q = 1, maxQuarters do
+			local e = 0
+			for _, o in ipairs(dischargeOutcomes) do
+				if o.prob > 0 and q >= o.grossQuarters then
+					e = e + o.prob * (1 + expectedDischarges[q - o.netQuarters])
+				end
+			end
+			expectedDischarges[q] = e
+		end
+		dischargesPerActivation = expectedDischarges[maxQuarters] or 0
+		-- A sub-1 expected count is still a real, every-cycle probabilistic rate (e.g. a 40% discount chance
+		-- with nothing else affordable gives exactly 0.4 expected discharges per activation) - not "never
+		-- happens" the way a literal 0 does. Only an exact 0 (this activation's banked amount falls below
+		-- what the oversized-payload guard already confirmed the full pool could afford) means the burst
+		-- model genuinely doesn't apply yet, correctly falling back to the continuous generationLimitedRate.
+		if dischargesPerActivation > 0 then
+			burstRate = cooldownRate * dischargesPerActivation
+		end
+	end
+
+	local spellCooldownCap = mainSkillCooldownRate(mainSkill)
+	local triggerRate = m_min(generationLimitedRate, burstRate, spellCooldownCap)
+
+	-- Account for Trigger-related INC/MORE modifiers (e.g. alt-quality "Triggered Skills deal X% increased
+	-- Damage" on the Invocation gem itself), matching the generic trigger handler's own call - but the
+	-- TriggeredDamage mod lives on metaSkill's own modList (declared on the visible Invocation gem, not the
+	-- hidden per-payload support), not mainSkill's, so it needs addMetaTriggerIncMoreMods's read-from-meta,
+	-- write-to-payload split rather than the generic addTriggerIncMoreMods (which assumes both are the same
+	-- skill).
+	addMetaTriggerIncMoreMods(mainSkill, metaSkill)
+	mainSkill.skillData.triggered = true
+	mainSkill.skillData.triggerRate = triggerRate
+	mainSkill.infoMessage = config.triggerName
+	mainSkill.infoTrigger = config.triggerName
+	output.MetaEnergyPerEvent = totalSocketedSpellCost
+	output.MetaEnergyEventsPerSecond = generationRatePerSecond
+	output.MetaEnergyTriggerRate = triggerRate
+
+	if breakdown then
+		breakdown.MetaEnergyEventsToTrigger = {
+			s_format("%.2f ^8(Energy generated per second)", generationRatePerSecond),
+			s_format("/ %.2f ^8(effective Energy cost of one discharge)", effectiveDischargeCost),
+			s_format("= %.3f ^8(Energy-limited discharge rate)", generationLimitedRate),
+		}
+		breakdown.EffectiveSourceRate = {
+			s_format("%.3fs ^8(Invocation cooldown, after cooldown recovery)", cooldown),
+			s_format("= %.3f ^8(activation rate)", cooldownRate),
+		}
+		if dischargesPerActivation >= 1 then
+			t_insert(breakdown.EffectiveSourceRate, s_format("x %.2f ^8(expected discharges chained per activation, chance-weighted from banked Energy)", dischargesPerActivation))
+			t_insert(breakdown.EffectiveSourceRate, s_format("= %.3f ^8(cooldown-limited discharge rate)", burstRate))
+		end
+		t_insert(breakdown.EffectiveSourceRate, "")
+		t_insert(breakdown.EffectiveSourceRate, s_format("min(%.3f, %.3f) ^8(cooldown-limited, Energy-limited)", burstRate, generationLimitedRate))
+		local minusCooldownCap = m_min(generationLimitedRate, burstRate)
+		if spellCooldownCap < minusCooldownCap then
+			t_insert(breakdown.EffectiveSourceRate, s_format("= %.3f", minusCooldownCap))
+			t_insert(breakdown.EffectiveSourceRate, "")
+			t_insert(breakdown.EffectiveSourceRate, s_format("min(%.3f, %.3f) ^8(prior result, capped by %s's own cooldown)", minusCooldownCap, spellCooldownCap, mainSkill.activeEffect.grantedEffect.name))
+		end
+		t_insert(breakdown.EffectiveSourceRate, s_format("= %.3f ^8(%s trigger rate)", triggerRate, config.triggerName or "Invocation"))
 	end
 end
 
@@ -1298,6 +1937,84 @@ local configTable = {
 	["focus"] = function()
 		return {customHandler = helmetFocusHandler}
 	end,
+	["supportmetacastoncritplayer"] = function()
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Cast on Critical",
+				eventsVar = "metaCoCEventsPerSecond", energyPerEventVar = "metaCoCEnergyPerEvent", energyPerEventStat = "MetaEnergyPerEvent",
+				autoDetectCrit = true, powerScaled = true}
+	end,
+	["supportmetacastonelementalailmentplayer"] = function()
+		-- Freeze/Shock/Ignite each add Energy at a different rate; metaCoEAAilmentType picks which one.
+		-- Freeze/Shock auto-derive from a self-cast source's chance-per-hit; Ignite always needs the
+		-- manual Energy-per-event override (see autoDetectAilmentInfo).
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Cast on Elemental Ailment",
+				eventsVar = "metaCoEAEventsPerSecond", energyPerEventVar = "metaCoEAEnergyPerEvent",
+				ailmentTypeVar = "metaCoEAAilmentType", powerScaled = true}
+	end,
+	["supportmetacastondodgeplayer"] = function()
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Cast on Dodge",
+				eventsVar = "metaDodgeEventsPerSecond", energyPerEventVar = "metaDodgeEnergyPerEvent", energyPerEventStat = "MetaEnergyPerEvent"}
+	end,
+	["supportmetacastonminiondeathplayer"] = function()
+		-- Constant is expressed as a divisor (1 Energy per X% minion relative defensiveness), not a
+		-- centienergy value, so Stage 1 requires a manual Energy-per-event override.
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Cast on Minion Death",
+				eventsVar = "metaMinionDeathEventsPerSecond", energyPerEventVar = "metaMinionDeathEnergyPerEvent"}
+	end,
+	["supportmetacastonmeleekillplayer"] = function()
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Cast on Melee Kill",
+				eventsVar = "metaMeleeKillEventsPerSecond", energyPerEventVar = "metaMeleeKillEnergyPerEvent", energyPerEventStat = "MetaEnergyPerEvent",
+				powerScaled = true}
+	end,
+	["supportmetacastonmeleestunplayer"] = function()
+		-- Defaults to the (lower) Stun value; Heavy Stun can be modelled via the manual override.
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Cast on Melee Stun",
+				eventsVar = "metaMeleeStunEventsPerSecond", energyPerEventVar = "metaMeleeStunEnergyPerEvent", energyPerEventStat = "MetaEnergyPerEvent",
+				powerScaled = true}
+	end,
+	["supportmetacastonblockplayer"] = function()
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Cast on Block",
+				eventsVar = "metaBlockEventsPerSecond", energyPerEventVar = "metaBlockEnergyPerEvent", energyPerEventStat = "MetaEnergyPerEvent"}
+	end,
+	["supportmetacastoncharmuseplayer"] = function()
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Cast on Charm Use",
+				eventsVar = "metaCharmUseEventsPerSecond", energyPerEventVar = "metaCharmUseEnergyPerEvent", energyPerEventStat = "MetaEnergyPerEvent"}
+	end,
+	-- Stage 5: not "Cast on X" gems by name, but identical Meta/Energy architecture (unique item or
+	-- passive-tree granted instead of a standalone gem).
+	["supportmetacastcurseonblockplayer"] = function()
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Curse on Block",
+				eventsVar = "metaCurseOnBlockEventsPerSecond", energyPerEventVar = "metaCurseOnBlockEnergyPerEvent", energyPerEventStat = "MetaEnergyPerEvent"}
+	end,
+	["supportmetacastlightningspellonhitplayer"] = function()
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Thundergod's Wrath",
+				eventsVar = "metaTGWEventsPerSecond", energyPerEventVar = "metaTGWEnergyPerEvent", energyPerEventStat = "MetaEnergyPerEvent",
+				powerScaled = true, autoDetectHit = true}
+	end,
+	["supportmetacastfirespellonhitplayer"] = function()
+		return {customHandler = metaEnergyTriggerHandler, triggerName = "Fire Spell on Melee Hit",
+				eventsVar = "metaFSOMHEventsPerSecond", energyPerEventVar = "metaFSOMHEnergyPerEvent", energyPerEventStat = "MetaEnergyPerEvent",
+				powerScaled = true, autoDetectHit = true}
+	end,
+	-- Stage 6 proof of concept: Invocation Meta skills discharge manually instead of auto-firing at
+	-- maximum Energy, so they use metaInvocationTriggerHandler, not metaEnergyTriggerHandler.
+	["supportbarrierinvocationplayer"] = function()
+		return {customHandler = metaInvocationTriggerHandler, triggerName = "Barrier Invocation",
+				generationRateVar = "metaBarrierInvocationESDamageTakenPerSecond", generationDivisorStat = "MetaEnergyPerESDamageTakenDivisor"}
+	end,
+	["supportreapersinvocationplayer"] = function()
+		return {customHandler = metaInvocationTriggerHandler, triggerName = "Reaper's Invocation",
+				generationRateVar = "metaReapersInvocationMeleeKillsPerSecond",
+				generationEnergyPerEventStat = "MetaEnergyPerEvent", generationPowerScaled = true}
+	end,
+	["supportspellslingerplayer"] = function()
+		return {customHandler = metaInvocationTriggerHandler, triggerName = "Spellslinger",
+				generationRateVar = "metaSpellslingerCastsPerSecond", generationPerCastTimeStat = "MetaEnergyPerCastTimeSecond"}
+	end,
+	["supportelementalinvocationplayer"] = function()
+		return {customHandler = metaInvocationTriggerHandler, triggerName = "Elemental Invocation",
+				generationRateVar = "metaElementalInvocationEventsPerSecond",
+				ailmentTypeVar = "metaElementalInvocationAilmentType"}
+	end,
 	["snipe"] = function(env)
 		local snipeStages = m_min(env.player.modDB:Sum("BASE", nil, "Multiplier:SnipeStage"), env.player.modDB:Sum("BASE", nil, "Multiplier:SnipeStagesMax"))
 		local snipeHitMulti = env.player.mainSkill.skillModList:Sum("BASE", env.player.mainSkill.skillCfg, "snipeHitMulti")
@@ -1431,6 +2148,35 @@ local function getUniqueItemTriggerName(skill)
 		local _, _, uniqueTriggerName = skill.socketGroup.source:find(".*:.*:(.*),.*")
 		return uniqueTriggerName
 	end
+end
+
+local metaEnergySupportNames = {
+	["supportmetacastoncritplayer"] = true,
+	["supportmetacastonelementalailmentplayer"] = true,
+	["supportmetacastondodgeplayer"] = true,
+	["supportmetacastonminiondeathplayer"] = true,
+	["supportmetacastonmeleekillplayer"] = true,
+	["supportmetacastonmeleestunplayer"] = true,
+	["supportmetacastonblockplayer"] = true,
+	["supportmetacastoncharmuseplayer"] = true,
+	["supportmetacastcurseonblockplayer"] = true,
+	["supportmetacastlightningspellonhitplayer"] = true,
+	["supportmetacastfirespellonhitplayer"] = true,
+	["supportbarrierinvocationplayer"] = true,
+	["supportreapersinvocationplayer"] = true,
+	["supportspellslingerplayer"] = true,
+	["supportelementalinvocationplayer"] = true,
+}
+
+-- calcs.triggers(env, env.player) is currently disabled globally in CalcPerform.lua ("TURNING OFF
+-- CALC TRIGGERS AND MIRAGES FOR TIME BEING", since the stat-set skill data migration) because most
+-- legacy PoE1-style trigger handlers haven't been re-verified against the new format. This lets
+-- CalcPerform.lua narrowly re-enable calcs.triggers just for Meta gem (Cast on X) skills, without
+-- resurrecting every other (still-unverified) trigger type for the player.
+function calcs.isMetaEnergyTriggerSkill(actor)
+	local skill = actor and actor.mainSkill
+	local triggerName = skill and skill.triggeredBy and skill.triggeredBy.grantedEffect.name
+	return triggerName ~= nil and metaEnergySupportNames[triggerName:lower()] or false
 end
 
 function calcs.triggers(env, actor)

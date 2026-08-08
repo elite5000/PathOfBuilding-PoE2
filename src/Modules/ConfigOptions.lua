@@ -328,6 +328,56 @@ local configSettings = {
 		-- set limit in skill multiplier for max stages
 		modList:NewMod("Multiplier:CorruptingCryStageAfterFirst", "BASE", val-1, "Config", { type = "Condition", var = "Effective" })
 	end },
+	-- Meta gem (Cast on X) Energy engine, Stage 1: qualifying-event rate is a manual input per gem,
+	-- since PoB doesn't yet derive crit/ailment/stun/dodge/kill rates automatically for these.
+	-- "Energy per event" is optional; when left blank the gem's own value is used.
+	{ label = "Cast on Block:", ifSkill = "Cast on Block" },
+	{ var = "metaBlockEventsPerSecond", type = "float", label = "Blocks/sec by socketed spells' group:", ifSkill = "Cast on Block", tooltip = "The rate at which you block hits while this Meta gem is socketed, used to calculate the Energy generation rate." },
+	{ var = "metaBlockEnergyPerEvent", type = "float", label = "Energy per block (override):", ifSkill = "Cast on Block", tooltip = "Optional override for the Energy gained per block. Leave blank to use Cast on Block's own value." },
+	{ label = "Cast on Charm Use:", ifSkill = "Cast on Charm Use" },
+	{ var = "metaCharmUseEventsPerSecond", type = "float", label = "Charm charges used/sec:", ifSkill = "Cast on Charm Use", tooltip = "The rate at which Charm charges are consumed, used to calculate the Energy generation rate." },
+	{ var = "metaCharmUseEnergyPerEvent", type = "float", label = "Energy per charge (override):", ifSkill = "Cast on Charm Use", tooltip = "Optional override for the Energy gained per Charm charge used. Leave blank to use Cast on Charm Use's own value." },
+	{ label = "Cast on Critical:", ifSkill = "Cast on Critical" },
+	{ var = "metaCoCEventsPerSecond", type = "float", label = "Critical hits/sec (override):", ifSkill = "Cast on Critical", tooltip = "Optional override for the critical-hit rate used to calculate the Energy generation rate.\nLeave blank to auto-derive from a self-cast Attack/Damage skill in the same item slot (hit rate x hit chance x crit chance). If none is found there and this group has \"Include in Full DPS\" ticked, PoB also looks across every other Full DPS-ticked group. PoB doesn't yet know for certain which skill's crits count in every case, so set this manually if the derived rate looks wrong." },
+	{ var = "metaCoCEnergyPerEvent", type = "float", label = "Energy per crit (override):", ifSkill = "Cast on Critical", tooltip = "Optional override for the Energy gained per critical hit. Leave blank to use Cast on Critical's own value (per monster Power)." },
+	{ label = "Cast on Dodge:", ifSkill = "Cast on Dodge" },
+	{ var = "metaDodgeEventsPerSecond", type = "float", label = "Metres dodge rolled/sec:", ifSkill = "Cast on Dodge", tooltip = "The rate of distance travelled while dodge rolling, used to calculate the Energy generation rate." },
+	{ var = "metaDodgeEnergyPerEvent", type = "float", label = "Energy per metre (override):", ifSkill = "Cast on Dodge", tooltip = "Optional override for the Energy gained per metre dodge rolled. Leave blank to use Cast on Dodge's own value." },
+	{ label = "Cast on Elemental Ailment:", ifSkill = "Cast on Elemental Ailment" },
+	{ var = "metaCoEAAilmentType", type = "list", label = "Qualifying ailment:", ifSkill = "Cast on Elemental Ailment", defaultIndex = 1, list = {{val="Freeze",label="Freeze"},{val="Shock",label="Shock"},{val="Ignite",label="Ignite"}}, tooltip = "Which ailment is generating Energy for this group - picks which of the gem's three Energy constants applies, and scales it by monster Power. None of the three are auto-derived from your hit/ailment rate yet, so the events/sec override below is always required." },
+	{ var = "metaCoEAEventsPerSecond", type = "float", label = "Qualifying ailments/sec:", ifSkill = "Cast on Elemental Ailment", tooltip = "The rate at which you inflict the selected ailment, used to calculate the Energy generation rate." },
+	{ var = "metaCoEAEnergyPerEvent", type = "float", label = "Energy per ailment (override):", ifSkill = "Cast on Elemental Ailment", tooltip = "Optional override for the Energy gained per instance of the selected ailment. Leave blank to use the gem's own value for Freeze/Shock (scaled by monster Power); required for Ignite, since its Energy value isn't derived automatically. See the gem's Energy values on poe2db." },
+	{ label = "Cast on Melee Kill:", ifSkill = "Cast on Melee Kill" },
+	{ var = "metaMeleeKillEventsPerSecond", type = "float", label = "Melee kills/sec:", ifSkill = "Cast on Melee Kill", tooltip = "The rate at which you kill enemies with melee hits, used to calculate the Energy generation rate." },
+	{ var = "metaMeleeKillEnergyPerEvent", type = "float", label = "Energy per kill (override):", ifSkill = "Cast on Melee Kill", tooltip = "Optional override for the Energy gained per melee kill. Leave blank to use Cast on Melee Kill's own value (per monster Power)." },
+	{ label = "Cast on Melee Stun:", ifSkill = "Cast on Melee Stun" },
+	{ var = "metaMeleeStunEventsPerSecond", type = "float", label = "Melee stuns/sec:", ifSkill = "Cast on Melee Stun", tooltip = "The rate at which you Stun or Heavily Stun enemies with melee hits, used to calculate the Energy generation rate." },
+	{ var = "metaMeleeStunEnergyPerEvent", type = "float", label = "Energy per stun (override):", ifSkill = "Cast on Melee Stun", tooltip = "Optional override for the Energy gained per Stun. Leave blank to use Cast on Melee Stun's own (regular Stun) value; set manually to model Heavy Stun instead." },
+	{ label = "Cast on Minion Death:", ifSkill = "Cast on Minion Death" },
+	{ var = "metaMinionDeathEventsPerSecond", type = "float", label = "Persistent Minion deaths/sec:", ifSkill = "Cast on Minion Death", tooltip = "The rate at which your Persistent Minions die, used to calculate the Energy generation rate." },
+	{ var = "metaMinionDeathEnergyPerEvent", type = "float", label = "Energy per death:", ifSkill = "Cast on Minion Death", tooltip = "Cast on Minion Death's Energy value depends on minion relative defensiveness, which isn't yet derived automatically, so this must be set manually. See the gem's Energy values on poe2db." },
+	-- Stage 5: same Meta gem Energy engine as above, granted by unique items / the passive tree instead
+	-- of a standalone "Cast on X" gem.
+	{ label = "Curse on Block:", ifSkill = "Curse on Block" },
+	{ var = "metaCurseOnBlockEventsPerSecond", type = "float", label = "Blocks/sec by socketed curses' group:", ifSkill = "Curse on Block", tooltip = "The rate at which you block hits while this Meta skill is active, used to calculate the Energy generation rate." },
+	{ var = "metaCurseOnBlockEnergyPerEvent", type = "float", label = "Energy per block (override):", ifSkill = "Curse on Block", tooltip = "Optional override for the Energy gained per block. Leave blank to use Curse on Block's own value." },
+	{ label = "Fire Spell on Melee Hit:", ifSkill = "Fire Spell on Melee Hit" },
+	{ var = "metaFSOMHEventsPerSecond", type = "float", label = "Melee hits/sec (override):", ifSkill = "Fire Spell on Melee Hit", tooltip = "Optional override for the melee-hit rate used to calculate the Energy generation rate.\nLeave blank to auto-derive from a self-cast melee Attack/Damage skill in the same group (hit rate x hit chance). Set this manually if the derived rate looks wrong." },
+	{ var = "metaFSOMHEnergyPerEvent", type = "float", label = "Energy per hit (override):", ifSkill = "Fire Spell on Melee Hit", tooltip = "Optional override for the Energy gained per melee hit. Leave blank to use Fire Spell on Melee Hit's own value (per monster Power)." },
+	{ label = "Thundergod's Wrath:", ifSkill = "Thundergod's Wrath" },
+	{ var = "metaTGWEventsPerSecond", type = "float", label = "Melee hits/sec (override):", ifSkill = "Thundergod's Wrath", tooltip = "Optional override for the melee-hit rate used to calculate the Energy generation rate.\nLeave blank to auto-derive from a self-cast melee Attack/Damage skill in the same group (hit rate x hit chance). Set this manually if the derived rate looks wrong." },
+	{ var = "metaTGWEnergyPerEvent", type = "float", label = "Energy per hit (override):", ifSkill = "Thundergod's Wrath", tooltip = "Optional override for the Energy gained per melee hit. Leave blank to use Thundergod's Wrath's own value (per monster Power)." },
+	-- Stage 6 proof of concept: Barrier Invocation doesn't auto-fire at maximum Energy - it's manually
+	-- discharged, reported as a steady-state rate capped by its own cooldown or Energy generation.
+	{ label = "Barrier Invocation:", ifSkill = "Barrier Invocation" },
+	{ var = "metaBarrierInvocationESDamageTakenPerSecond", type = "float", label = "Energy Shield damage taken/sec:", ifSkill = "Barrier Invocation", tooltip = "The rate at which your Energy Shield is damaged by enemy hits, used to calculate the Energy generation rate. PoB doesn't yet estimate incoming damage automatically, so this must be set manually." },
+	{ label = "Reaper's Invocation:", ifSkill = "Reaper's Invocation" },
+	{ var = "metaReapersInvocationMeleeKillsPerSecond", type = "float", label = "Melee kills/sec:", ifSkill = "Reaper's Invocation", tooltip = "The rate at which you kill enemies with melee attacks, used to calculate the Energy generation rate." },
+	{ label = "Spellslinger:", ifSkill = "Spellslinger" },
+	{ var = "metaSpellslingerCastsPerSecond", type = "float", label = "Energy generated/sec:", ifSkill = "Spellslinger", tooltip = "The rate at which casting Spells generates Energy, used to calculate the Energy generation rate. PoB attempts to auto-derive this from a self-cast Spell in the group, but that spell is usually also one of Spellslinger's own triggered targets, so this generally needs to be set manually." },
+	{ label = "Elemental Invocation:", ifSkill = "Elemental Invocation" },
+	{ var = "metaElementalInvocationAilmentType", type = "list", label = "Qualifying ailment:", ifSkill = "Elemental Invocation", defaultIndex = 1, list = {{val="Freeze",label="Freeze"},{val="Shock",label="Shock"},{val="Ignite",label="Ignite"}}, tooltip = "Which ailment is generating Energy for this group - picks which of the gem's three Energy constants applies, and scales it by monster Power." },
+	{ var = "metaElementalInvocationEventsPerSecond", type = "float", label = "Qualifying ailments/sec:", ifSkill = "Elemental Invocation", tooltip = "The rate at which you inflict the selected ailment, used to calculate the Energy generation rate." },
 	{ label = "Cruelty:", ifSkill = "Cruelty" },
 	{ var = "overrideCruelty", type = "count", label = "Damage % (if not maximum):", ifSkill = "Cruelty", tooltip = "Cruelty is a buff provided by Cruelty Support which grants\nup to 40% more damage over time to the skills it supports.", apply = function(val, modList, enemyModList)
 		modList:NewMod("Cruelty", "OVERRIDE", m_min(val, 40), "Config", { type = "Condition", var = "Combat" })

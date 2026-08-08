@@ -212,6 +212,17 @@ local SkillsTabClass = newClass("SkillsTab", "UndoHandler", "ControlHost", "Cont
 	end
 	self.controls.includeInFullDPS = new("CheckBoxControl", { "LEFT", self.controls.groupEnabled, "RIGHT" }, { 145, 0, 20 }, "Include in Full DPS:", function(state)
 		self.displayGroup.includeInFullDPS = state
+		-- Every group socketed in the same item slot is part of the same "item", so keep them in sync -
+		-- this is what lets the Meta-Energy auto-detect fallback (CalcTriggers.lua's findAutoEnergySource)
+		-- span multiple slots (e.g. an amulet-granted Meta gem and the weapon attack generating its
+		-- Energy) with one click per item rather than one click per group.
+		if self.displayGroup.slot then
+			for _, group in ipairs(self.socketGroupList) do
+				if group ~= self.displayGroup and group.slot == self.displayGroup.slot then
+					group.includeInFullDPS = state
+				end
+			end
+		end
 		self:AddUndoState()
 		self.build.buildFlag = true
 	end)
@@ -1366,7 +1377,7 @@ function SkillsTabClass:AddSocketGroupTooltip(tooltip, socketGroup)
 		for _, skillEffect in ipairs(activeSkill.effectList) do
 			tooltip:AddLine(20, string.format("%s%s ^7%d%s/%d%s%s",
 				data.skillColorMap[skillEffect.grantedEffect.color or skillEffect.gemData and skillEffect.gemData.grantedEffect.color],
-				skillEffect.srcInstance.nameSpec or skillEffect.grantedEffect.name,
+				(skillEffect.srcInstance and skillEffect.srcInstance.nameSpec) or (skillEffect.gemData and skillEffect.gemData.name) or skillEffect.grantedEffect.name,
 				skillEffect.srcInstance and skillEffect.srcInstance.level or skillEffect.level,
 				(skillEffect.srcInstance and skillEffect.level > skillEffect.srcInstance.level) and colorCodes.MAGIC.."+"..(skillEffect.level - skillEffect.srcInstance.level).."^7" or "",
 				skillEffect.srcInstance and skillEffect.srcInstance.quality or skillEffect.quality,
